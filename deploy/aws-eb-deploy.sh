@@ -322,7 +322,7 @@ fi
 
 if [ "$ENVTYPE" != 'migrate' ]; then
 
-  while [ "${SETUPAPP}" != 'setup' ] && [ "${SETUPAPP}" != 'env' ] && [ "${SETUPAPP}" != 'deploy' ]; do
+  while [ "${SETUPAPP}" != 'setup' ] && [ "${SETUPAPP}" != 'env' ] && [ "${SETUPAPP}" != 'deploy' ] && [ "${SETUPAPP}" != 'upgrade' ]; do
     echo ""
     echo "========================================="
     echo "Setup the environment ($EBENV), use an existing one?, or just reset environment variables"
