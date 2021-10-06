@@ -19,5 +19,6 @@ TEST_DB_NAME=${DB_NAME}_test
 DB_USER=$(whoami)
 DB_PASSWORD=root
 DB_DEFAULT_SCHEMA=ml_app
-APP_DB_SEARCH_PATH=ml_app
+APP_DB_SEARCH_PATH=ml_app,ref_data
+DUMP_SCHEMAS="ml_app ref_data"
 RSPEC_OPTIONS='--exclude-pattern "**/features/**/*_spec.rb"'
