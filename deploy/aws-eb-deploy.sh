@@ -357,6 +357,19 @@ if [ "$SETUPAPP" == 'env' ]; then
   ONLY_SETENV=true
 fi
 
+echo ""
+echo "========================================="
+echo "Committing the platform and ebextension configurations"
+git -c advice.detachedHead=false add $APPDIR/passenger-standalone.json
+git -c advice.detachedHead=false commit $APPDIR/passenger-standalone.json -m "Add passenger standalone config"
+git -c advice.detachedHead=false add $APPDIR/.ebextensions
+git -c advice.detachedHead=false commit $APPDIR/.ebextensions -m "Add ebextensions"
+git -c advice.detachedHead=false add $APPDIR/.platform
+git -c advice.detachedHead=false commit $APPDIR/.platform -m "Add platform"
+git -c advice.detachedHead=false add $APPDIR/Procfile
+git -c advice.detachedHead=false commit $APPDIR/Procfile -m "Add Procfile"
+
+
 if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
 
   echo ""
@@ -374,14 +387,24 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
   # Required because the cli can't cope with commas in eb create
   TEMP_DB_SEARCH_PATH=ml_app
 
-  eb create $EBENV --single -pr \
+  SCALE_FLAGS=''
+
+  if [ ! "${MAX_INSTANCES}" ] || [ "${MAX_INSTANCES}" == '1' ]; then
+    SCALE_FLAGS='--single'
+  else
+    # Shared loadbalancer, etc
+    SCALE_FLAGS="-im ${MIN_INSTANCES} -ix ${MAX_INSTANCES} --vpc.elbpublic --vpc.elbsubnets=${VPC_SUBNETS} --elb-type=application"
+  fi
+
+  eb create $EBENV ${SCALE_FLAGS} -pr \
     --instance_type=$SERVERSIZE \
     --vpc --vpc.id="$VPC_ID" --vpc.ec2subnets="$VPC_SUBNETS" \
+    --vpc.publicip \
     --vpc.securitygroup="$SECURITY_GROUPS" \
     -p "$EB_PLATFORM" \
     -k "$EB_KEYNAME" \
     --envvars \
-    SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_DEVISE_SECRET_KEY="$DEVISE_SECRET_KEY_BASE",RAILS_ENV=production,RAILS_SERVE_STATIC_FILES="$RAILS_SERVE_STATIC_FILES",RAILS_SKIP_ASSET_COMPILATION=true,FPHS_ENV_NAME="$FPHS_ENV_NAME",FPHS_POSTGRESQL_HOSTNAME="$DB_HOST",FPHS_POSTGRESQL_USERNAME="$DB_USERNAME",FPHS_POSTGRESQL_PASSWORD="$DB_PASSWORD",FPHS_POSTGRESQL_DATABASE="$DB_NAME",FPHS_POSTGRESQL_PORT="$DB_PORT",RDS_SCHEMA="$TEMP_DB_SEARCH_PATH",FPHS_POSTGRESQL_SCHEMA="$TEMP_DB_SEARCH_PATH",RAILS_SKIP_MIGRATIONS="$SKIP_MIGRATIONS",SMTP_SERVER="$SMTP_SERVER",SMTP_PORT=465,SMTP_USER_NAME="$SMTP_USER_NAME",SMTP_PASSWORD="$SMTP_PASSWORD",FPHS_FROM_EMAIL="$FROM_EMAIL",FILESTORE_CONTAINERS_DIRNAME=containers,FILESTORE_NFS_DIR=/mnt/fphsfs,FILESTORE_TEMP_UPLOADS_DIR=/tmp/uploads,FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR",FPHS_X_SENDFILE_HEADER="X-Accel-Redirect",BASE_URL="$BASE_URL",SMS_SENDER_ID="$SMS_SENDER_ID",FPHS_LOAD_APP_TYPES=1,MIG_PATH="$MIG_PATH",NUM_WORKERS="${NUM_WORKERS}",RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
+    SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_DEVISE_SECRET_KEY="$DEVISE_SECRET_KEY_BASE",RAILS_ENV=production,RAILS_SERVE_STATIC_FILES="$RAILS_SERVE_STATIC_FILES",RAILS_SKIP_ASSET_COMPILATION=true,FPHS_ENV_NAME="$FPHS_ENV_NAME",FPHS_POSTGRESQL_HOSTNAME="$DB_HOST",FPHS_POSTGRESQL_USERNAME="$DB_USERNAME",FPHS_POSTGRESQL_PASSWORD="$DB_PASSWORD",FPHS_POSTGRESQL_DATABASE="$DB_NAME",FPHS_POSTGRESQL_PORT="$DB_PORT",RDS_SCHEMA="$TEMP_DB_SEARCH_PATH",FPHS_POSTGRESQL_SCHEMA="$TEMP_DB_SEARCH_PATH",RAILS_SKIP_MIGRATIONS="$SKIP_MIGRATIONS",SMTP_SERVER="$SMTP_SERVER",SMTP_PORT=465,SMTP_USER_NAME="$SMTP_USER_NAME",SMTP_PASSWORD="$SMTP_PASSWORD",FPHS_FROM_EMAIL="$FROM_EMAIL",FILESTORE_CONTAINERS_DIRNAME=containers,FILESTORE_NFS_DIR=/mnt/fphsfs,FILESTORE_TEMP_UPLOADS_DIR=/tmp/uploads,FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR",FPHS_X_SENDFILE_HEADER="X-Accel-Redirect",BASE_URL="$BASE_URL",SMS_SENDER_ID="$SMS_SENDER_ID",FPHS_ENC_SECRET_KEY_BASE="$FPHS_ENC_SECRET_KEY_BASE",FPHS_LOAD_APP_TYPES=1,MIG_PATH="$MIG_PATH",NUM_WORKERS="${NUM_WORKERS}",RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
 
   eb use $EBENV
 
@@ -394,7 +417,6 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
 
 
   echo "========================================="
-  echo "Ensure the public IP address reported above is set in the appropriate passenger_startup_conf.config file"
   echo "Ensure the Route 53 record set for the internal domain $APPDOMAINNAME has been set up and points to the instance via a CNAME."
   nslookup $APPDOMAINNAME
   if [ "$?" == "1" ]; then
@@ -404,6 +426,10 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
     echo "Internal Domain name found"
   fi
 
+  echo "========================================="
+  echo "Setup should have completed - now setting environment variables fully"
+  SETENV=env
+  ONLY_SETENV=true
 else
   echo ""
   echo "========================================="
@@ -455,6 +481,7 @@ if [ -z "$RDS_HOST" ]; then
   echo ""
   echo "========================================="
   echo Setting up environment variables
+  eb use $EBENV
 
   eb setenv \
     SECRET_KEY_BASE="$SECRET_KEY_BASE" \
@@ -490,6 +517,7 @@ if [ -z "$RDS_HOST" ]; then
     FPHS_PASSWORD_REMINDER_DAYS="$FPHS_PASSWORD_REMINDER_DAYS" \
     AWS_ACCESS_KEY_ID="$ENV_AWS_ACCESS_KEY_ID" \
     AWS_SECRET_ACCESS_KEY="$ENV_AWS_SECRET_ACCESS_KEY" \
+    FPHS_ENC_SECRET_KEY_BASE="$FPHS_ENC_SECRET_KEY_BASE" \
     LOGIN_ISSUES_URL="$LOGIN_ISSUES_URL" \
     LOGIN_MESSAGE="$LOGIN_MESSAGE" \
     MIG_PATH="$MIG_PATH" \
@@ -503,19 +531,6 @@ if [ "$ONLY_SETENV" ]; then
   echo "Environment variable setup complete. Exiting"
   exit
 fi
-
-
-echo ""
-echo "========================================="
-echo "Committing the passenger and ebextension configurations"
-git -c advice.detachedHead=false add $APPDIR/passenger-standalone.json
-git -c advice.detachedHead=false commit $APPDIR/passenger-standalone.json -m "Add passenger standalone config"
-git -c advice.detachedHead=false add $APPDIR/.ebextensions
-git -c advice.detachedHead=false commit $APPDIR/.ebextensions -m "Add ebextensions"
-git -c advice.detachedHead=false add $APPDIR/.platform
-git -c advice.detachedHead=false commit $APPDIR/.platform -m "Add platform"
-git -c advice.detachedHead=false add $APPDIR/Procfile
-git -c advice.detachedHead=false commit $APPDIR/Procfile -m "Add Procfile"
 
 echo ""
 echo "========================================="
