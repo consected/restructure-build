@@ -20,6 +20,22 @@ The build process performs the following
 - commits and pushes the built and tagged version back to the repo
   (and / or an alternative _production_ repo if specified)
 
+## Setup the Docker image
+
+    docker image build .
+
+You may need to clear the output director to get started:
+
+    sudo rm -rf output/restructure*
+
+If you receive strange merge conflicts during build, this can also often resolve them.
+
+If you get an error that yum can't find a repository due to no space, you may need to clean up docker. This will
+clean everything!
+
+    docker system prune -a
+    docker volume rm $(docker volume ls -f dangling=true -q)
+
 ## Configuration
 
 Copy `build-vars-sample.sh` to `build-vars.sh` and edit it with your details.

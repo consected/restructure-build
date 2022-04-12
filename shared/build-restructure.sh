@@ -2,10 +2,10 @@
 
 source /shared/build-vars.sh
 
-PGSQLBIN=/usr/pgsql-10/bin
+PGSQLBIN=/usr/bin
+export PATH=${PGSQLBIN}:$PATH
 export PGCLIENTENCODING=UTF8
 export HOME=/root
-export PATH=${PGSQLBIN}:$PATH
 export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
 source $HOME/.bash_profile
 BUILD_DIR=/output/restructure
@@ -66,10 +66,22 @@ if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
   exit 1
 fi
 
+cd ${BUILD_DIR}
+rbenv local ${RUBY_V}
+rbenv global ${RUBY_V}
+
+if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
+  rbenv install ${RUBY_V}
+  rbenv local ${RUBY_V}
+  rbenv global ${RUBY_V}
+fi
+
 if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
   echo "Ruby versions don't match: $(cat ${BUILD_DIR}/.ruby-version) != ${RUBY_V}"
   exit 7
 fi
+
+git stash save
 
 if [ ! -f ${DOCS_BUILD_DIR}/.git/HEAD ]; then
   echo "Failed to get the docs repo"
@@ -105,7 +117,7 @@ fi
 if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
   echo "Creating a copy of the prod repo for development"
   mkdir -p ${DEV_COPY}
-  rsync -av --delete ${BUILD_DIR}/ ${DEV_COPY}/
+  rsync -a --delete ${BUILD_DIR}/ ${DEV_COPY}/
 fi
 
 check_version_and_exit
@@ -159,7 +171,6 @@ echo "Using ruby version $(rbenv local)"
 which ruby
 ruby --version
 
-
 echo "Bundle"
 rm -f .bundle/config
 gem install bundler
@@ -173,7 +184,6 @@ bundle install --system --no-deployment
 bundle package --all
 bundle cache --all
 
-
 if [ ! -d vendor/cache ]; then
   echo "No vendor/cache after bundle package"
   exit 1
@@ -184,7 +194,6 @@ if [ "$?" != "0" ]; then
   echo "bundle check failed"
   exit 7
 fi
-
 
 git add vendor/cache
 git add Gemfile*
@@ -219,7 +228,7 @@ CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};
 EOF
 
 echo "Load structure"
-psql -d ${DB_NAME} -U ${DB_USER} -h localhost < db/structure.sql 2>&1
+psql -d ${DB_NAME} -U ${DB_USER} -h localhost < db/structure.sql > /dev/null
 
 echo "Grant privileges, setup pgcrypto and replace migration list"
 sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} 2>&1 << EOF
@@ -242,11 +251,6 @@ fi
 
 check_version_and_exit
 echo "Target version ${TARGET_VERSION}"
-
-echo "Update CHANGELOG"
-
-CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
-sed -i -E "s/## Unreleased/## Unreleased\n\n\n${CL_TITLE}/" CHANGELOG.md
 
 git add version.txt CHANGELOG.md
 
@@ -294,7 +298,7 @@ echo "begin;" > /tmp/current_schema.sql
 
 DUMP_SCHEMAS_ARGS=''
 for s in ${DUMP_SCHEMAS}; do
-  DUMP_SCHEMAS_ARGS=" -n ${s} "
+  DUMP_SCHEMAS_ARGS="${DUMP_SCHEMAS_ARGS} -n ${s} "
 done
 
 pg_dump -O ${DUMP_SCHEMAS_ARGS} -d ${DB_NAME} -s -x >> /tmp/current_schema.sql
@@ -321,13 +325,21 @@ if [ "${RUN_TESTS}" == 'true' ]; then
 fi
 
 # Commit the new assets and schema
-echo "Push to: $(git config --get remote.origin.url)"
+echo "Pull from: $(git config --get remote.origin.url)"
 git pull
+
+echo "Update CHANGELOG"
+CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
+sed -i -E "s/## Unreleased/${CL_TITLE}/" CHANGELOG.md
+
+echo "Add final changes, commit and tag"
 git add -A
 git commit -m "Built and tested release-ready version '${TARGET_VERSION}'"
 git tag -a "${TARGET_VERSION}" -m "Push release"
+
+echo "Push to: $(git config --get remote.origin.url)"
 git push
-git push origin --tags
+git push origin ${TARGET_VERSION}
 git push origin --all
 
 # git push -f origin "${TARGET_VERSION}"
@@ -370,8 +382,8 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
   echo "Handling git asset, db and security updates"
   pwd
   git init
-  git status
   git add -A
+  git status
 
   # Reset the remote urls for the dev repo
   echo "Pushing changes back to dev repo"
