@@ -71,7 +71,7 @@ function setup_aws() {
 
   if [ "${DEPLOY_REQUIRES_MFA}" == 'true' ]; then
     aws_mfa_login
-  fi  
+  fi
 
   echo "Initializing EB environment"
   eb init $EBAPPNAME -r $EBREGION --profile $AWS_EB_PROFILE $INTERACTIVE_EB_INIT -p "$EB_PLATFORM" -k "$EB_KEYNAME"
@@ -118,6 +118,20 @@ function aws_mfa_login() {
   fi
 }
 
+function wait_for_ready() {
+  echo ""
+  echo "========================================="
+  echo "Waiting for ready status to start action"
+  eb_status=$(eb status | grep 'Status: Ready' | wc -l)
+  echo ${eb_status}
+  while [ "${eb_status}" != '1' ]; do
+    echo "Sleeping for 10 seconds then trying again"
+    sleep 10
+    eb_status=$(eb status | grep 'Status: Ready' | wc -l)
+    echo ${eb_status}
+  done
+}
+
 if [ -z "$APPSRC" ]; then
   echo ""
   echo "========================================="
@@ -126,7 +140,6 @@ if [ -z "$APPSRC" ]; then
   echo "Enter 1 or 2"
   read APPSRC
 fi
-
 
 if [ "$APPSRC" == '1' ]; then
 
@@ -197,7 +210,10 @@ echo "========================================="
 if [ -z "${ENVTYPE}" ]; then
   echo "Enter the environment name to deploy"
   echo "Configured environments are:"
-  echo $(cd ${OPTIONSDIR}/; ls *-env.vars | sed -n "s/\(.\+\)-env.vars/\1/p")
+  echo $(
+    cd ${OPTIONSDIR}/
+    ls *-env.vars | sed -n "s/\(.\+\)-env.vars/\1/p"
+  )
   read ENVTYPE
 else
   echo "Deploying to environment: ${ENVTYPE}"
@@ -226,8 +242,7 @@ if [ "$SKIP_MIGRATIONS" == 'true' ]; then
   read -p "Once migrated, hit enter to continue" _NOENTRY
 fi
 
-
-echo 
+echo
 echo "========================================="
 echo "GPG is used to unencrypt app secrets in the file '$OPTIONSDIR/$ENVTYPE-secrets.gpg'"
 echo "Enter the encryption key now."
@@ -284,7 +299,7 @@ fi
 find $APPDIR/.platform -type f -exec chmod 774 {} \;
 
 cat > $APPDIR/Procfile << EOF
-web: puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
+web: bundle exec puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
 delayed_job: cd /var/app/current; RAILS_ENV=production bundle exec bin/delayed_job -n $NUM_WORKERS run
 EOF
 
@@ -313,7 +328,6 @@ cat > $APPDIR/passenger-standalone.json << EOF
   "ssl_certificate_key" : "/etc/pki/tls/certs/server.key"
 }
 EOF
-
 
 if [ -z "$EBENV" ]; then
   echo "Environment information was not loaded."
@@ -349,12 +363,29 @@ fi
 
 if [ "$SETUPAPP" == 'upgrade' ]; then
   eb use $EBENV
+  wait_for_ready
   eb upgrade
-  exit
+  SETUPAPP=deploy
 fi
 
 if [ "$SETUPAPP" == 'env' ]; then
   ONLY_SETENV=true
+fi
+
+if [ "${FORCE_RUBY_V}" ]; then
+  echo ""
+  echo "========================================="
+  echo "Forcing ruby version to ${FORCE_RUBY_V}"
+  echo "${FORCE_RUBY_V}" > $APPDIR/.ruby-version
+  git -c advice.detachedHead=false add $APPDIR/.ruby-version
+  git -c advice.detachedHead=false commit $APPDIR/.ruby-version -m "Force ruby version"
+else
+  echo ""
+  echo "========================================="
+  echo "Removing .ruby-version"
+  rm -f $APPDIR/.ruby-version
+  git -c advice.detachedHead=false add $APPDIR/.ruby-version
+  git -c advice.detachedHead=false commit $APPDIR/.ruby-version -m "Remove ruby version"
 fi
 
 echo ""
@@ -368,7 +399,6 @@ git -c advice.detachedHead=false add $APPDIR/.platform
 git -c advice.detachedHead=false commit $APPDIR/.platform -m "Add platform"
 git -c advice.detachedHead=false add $APPDIR/Procfile
 git -c advice.detachedHead=false commit $APPDIR/Procfile -m "Add Procfile"
-
 
 if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
 
@@ -414,7 +444,6 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
     eb terminate
     exit
   fi
-
 
   echo "========================================="
   echo "Ensure the Route 53 record set for the internal domain $APPDOMAINNAME has been set up and points to the instance via a CNAME."
@@ -483,6 +512,8 @@ if [ -z "$RDS_HOST" ]; then
   echo Setting up environment variables
   eb use $EBENV
 
+  wait_for_ready
+
   eb setenv \
     SECRET_KEY_BASE="$SECRET_KEY_BASE" \
     FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE" \
@@ -510,6 +541,7 @@ if [ -z "$RDS_HOST" ]; then
     FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR" \
     FPHS_X_SENDFILE_HEADER="X-Accel-Redirect" \
     BASE_URL="$BASE_URL" \
+    PAGE_TITLE="$PAGE_TITLE" \
     SMS_SENDER_ID="$SMS_SENDER_ID" \
     FPHS_LOAD_APP_TYPES="$FPHS_LOAD_APP_TYPES" \
     FPHS_2FA_AUTH_DISABLED="$FPHS_2FA_AUTH_DISABLED" \
@@ -524,7 +556,9 @@ if [ -z "$RDS_HOST" ]; then
     MIG_PATH="$MIG_PATH" \
     FPHS_ADMIN_EMAIL=${ADMIN_EMAIL} \
     NUM_WORKERS="${NUM_WORKERS}" \
-    RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
+    RAILS_MAX_THREADS="${RAILS_MAX_THREADS}" \
+    FPHS_DISABLE_VDEF="${FPHS_DISABLE_VDEF}" \
+    FPHS_ALLOW_DYN_MIGRATIONS="${FPHS_ALLOW_DYN_MIGRATIONS}"
 
 fi
 
@@ -533,17 +567,7 @@ if [ "$ONLY_SETENV" ]; then
   exit
 fi
 
-echo ""
-echo "========================================="
-echo "Waiting for ready status to start deployment"
-eb_status=$(eb status | grep 'Status: Ready' | wc -l)
-echo ${eb_status}
-while [ "${eb_status}" != '1' ]; do
-  echo "Sleeping for 10 seconds then trying again"
-  sleep 10
-  eb_status=$(eb status | grep 'Status: Ready' | wc -l)
-  echo ${eb_status}
-done
+wait_for_ready
 
 echo ""
 echo "========================================="
@@ -557,7 +581,6 @@ echo "Completed deployment"
 rm $APPDIR/.ebextensions/certificates.config
 
 git config --global advice.detachedHead true
-
 
 echo ""
 echo "========================================="
