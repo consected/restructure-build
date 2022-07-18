@@ -2,10 +2,10 @@
 
 source /shared/build-vars.sh
 
-PGSQLBIN=/usr/pgsql-10/bin
+PGSQLBIN=/usr/bin
+export PATH=${PGSQLBIN}:$PATH
 export PGCLIENTENCODING=UTF8
 export HOME=/root
-export PATH=${PGSQLBIN}:$PATH
 export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
 source $HOME/.bash_profile
 BUILD_DIR=/output/restructure
@@ -228,7 +228,7 @@ CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};
 EOF
 
 echo "Load structure"
-psql -d ${DB_NAME} -U ${DB_USER} -h localhost < db/structure.sql 2>&1
+psql -d ${DB_NAME} -U ${DB_USER} -h localhost < db/structure.sql > /dev/null
 
 echo "Grant privileges, setup pgcrypto and replace migration list"
 sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} 2>&1 << EOF
@@ -339,7 +339,7 @@ git tag -a "${TARGET_VERSION}" -m "Push release"
 
 echo "Push to: $(git config --get remote.origin.url)"
 git push
-git push origin --tags
+git push origin ${TARGET_VERSION}
 git push origin --all
 
 # git push -f origin "${TARGET_VERSION}"

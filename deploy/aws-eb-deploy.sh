@@ -23,6 +23,10 @@ INTERACTIVE_EB_INIT=${INTERACTIVE_EB_INIT:=--interactive}
 # Set the AWS region
 EBREGION=${EBREGION:=us-east-1}
 
+# This EB zone is specific to the region, and is used by route 53 to allow an
+# alias target to be specified, enabling an A record to the EB environment to be created
+TARGET_EB_ZONE_ID='<TBD>'
+
 AWS_EB_PROFILE=${AWS_EB_PROFILE:=restructureuser}
 EB_KEYNAME=${EB_KEYNAME:=restructure-aws-eb}
 EBAPPNAME=${EBAPPNAME:=restructure-demo}
@@ -34,6 +38,16 @@ export AWS_DEFAULT_REGION=${EBREGION}
 if [ ! -z "$(command -v pyenv)" ]; then
   LOCAL_PYENV=$(pyenv local)
   echo Got pyenv: $LOCAL_PYENV
+fi
+
+if [ ! -f ~/.ssh/${EB_KEYNAME} ]; then
+  aws ec2 create-key-pair \
+    --key-name ${EB_KEYNAME} \
+    --key-type rsa \
+    --query "KeyMaterial" \
+    --output text > ~/.ssh/${EB_KEYNAME}
+
+  chmod 400 ~/.ssh/${EB_KEYNAME}
 fi
 
 function cleanup() {
@@ -71,7 +85,7 @@ function setup_aws() {
 
   if [ "${DEPLOY_REQUIRES_MFA}" == 'true' ]; then
     aws_mfa_login
-  fi  
+  fi
 
   echo "Initializing EB environment"
   eb init $EBAPPNAME -r $EBREGION --profile $AWS_EB_PROFILE $INTERACTIVE_EB_INIT -p "$EB_PLATFORM" -k "$EB_KEYNAME"
@@ -118,6 +132,20 @@ function aws_mfa_login() {
   fi
 }
 
+function wait_for_ready() {
+  echo ""
+  echo "========================================="
+  echo "Waiting for ready status to start action"
+  eb_status=$(eb status | grep 'Status: Ready' | wc -l)
+  echo ${eb_status}
+  while [ "${eb_status}" != '1' ]; do
+    echo "Sleeping for 10 seconds then trying again"
+    sleep 10
+    eb_status=$(eb status | grep 'Status: Ready' | wc -l)
+    echo ${eb_status}
+  done
+}
+
 if [ -z "$APPSRC" ]; then
   echo ""
   echo "========================================="
@@ -126,7 +154,6 @@ if [ -z "$APPSRC" ]; then
   echo "Enter 1 or 2"
   read APPSRC
 fi
-
 
 if [ "$APPSRC" == '1' ]; then
 
@@ -178,8 +205,10 @@ echo ""
 echo "========================================="
 echo "Code is in: $(pwd)"
 echo "Version according to source code is: $APPVERSION"
-echo "If this is correct, hit enter. Otherwise Ctrl-C to exit."
-read CORRECT
+if [ -z "${BATCHMODE}" ]; then
+  echo "If this is correct, hit enter. Otherwise Ctrl-C to exit."
+  read CORRECT
+fi
 
 echo ""
 echo "========================================="
@@ -197,7 +226,10 @@ echo "========================================="
 if [ -z "${ENVTYPE}" ]; then
   echo "Enter the environment name to deploy"
   echo "Configured environments are:"
-  echo $(cd ${OPTIONSDIR}/; ls *-env.vars | sed -n "s/\(.\+\)-env.vars/\1/p")
+  echo $(
+    cd ${OPTIONSDIR}/
+    ls *-env.vars | sed -n "s/\(.\+\)-env.vars/\1/p"
+  )
   read ENVTYPE
 else
   echo "Deploying to environment: ${ENVTYPE}"
@@ -216,22 +248,27 @@ if [ ! -f "$OPTIONSDIR/$ENVTYPE-env.vars" ]; then
 fi
 
 echo "Load common variables from $OPTIONSDIR/$ENVTYPE-env.vars"
+prev_dir=$(pwd)
+cd $SCRIPTDIR
+pwd
 source $OPTIONSDIR/common-env.vars
 source $OPTIONSDIR/$ENVTYPE-env.vars
+cd $prev_dir
 
-if [ "$SKIP_MIGRATIONS" == 'true' ]; then
+if [ "$SKIP_MIGRATIONS" == 'true' ] && [ -z "${BATCHMODE}" ]; then
   echo "========================================="
   echo "The $ENVTYPE deployment does not migrate the database. It is essential to ensure the database has been migrated prior to deployment."
   echo "Use app-scripts/gen_schema_migrations.sh or app-scripts/migrate-aws-db.sh or the 'migrate' EB environment to run migrations."
   read -p "Once migrated, hit enter to continue" _NOENTRY
 fi
 
-
-echo 
+echo
 echo "========================================="
 echo "GPG is used to unencrypt app secrets in the file '$OPTIONSDIR/$ENVTYPE-secrets.gpg'"
 echo "Enter the encryption key now."
-read -s PCODE && echo $PCODE | gpg --batch --yes --passphrase-fd 0 $OPTIONSDIR/$ENVTYPE-secrets.gpg
+[ -z "$PCODE" ] && read -s PCODE
+
+echo $PCODE | gpg --batch --yes --passphrase-fd 0 $OPTIONSDIR/$ENVTYPE-secrets.gpg
 unset PCODE
 
 if [ -f $OPTIONSDIR/$ENVTYPE-secrets ]; then
@@ -284,7 +321,7 @@ fi
 find $APPDIR/.platform -type f -exec chmod 774 {} \;
 
 cat > $APPDIR/Procfile << EOF
-web: puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
+web: bundle exec puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
 delayed_job: cd /var/app/current; RAILS_ENV=production bundle exec bin/delayed_job -n $NUM_WORKERS run
 EOF
 
@@ -293,7 +330,8 @@ if [ "$NO_CERTIFICATE" != 'true' ]; then
   echo "========================================="
   echo "GPG is used to unencrypt the $ENVTYPE certs in file $OPTIONSDIR/$ENVTYPE-cert-content.gpg"
   echo "Enter the encryption key now."
-  read -s PCODE && echo $PCODE | gpg --batch --yes --passphrase-fd 0 $OPTIONSDIR/$ENVTYPE-cert-content.gpg
+  [ -z "$PCODE" ] && read -s PCODE
+  echo $PCODE | gpg --batch --yes --passphrase-fd 0 $OPTIONSDIR/$ENVTYPE-cert-content.gpg
   if [ -f $OPTIONSDIR/$ENVTYPE-cert-content ]; then
     mv $OPTIONSDIR/$ENVTYPE-cert-content $APPDIR/.ebextensions/certificates.config
   else
@@ -313,7 +351,6 @@ cat > $APPDIR/passenger-standalone.json << EOF
   "ssl_certificate_key" : "/etc/pki/tls/certs/server.key"
 }
 EOF
-
 
 if [ -z "$EBENV" ]; then
   echo "Environment information was not loaded."
@@ -349,12 +386,29 @@ fi
 
 if [ "$SETUPAPP" == 'upgrade' ]; then
   eb use $EBENV
+  wait_for_ready
   eb upgrade
-  exit
+  SETUPAPP=deploy
 fi
 
 if [ "$SETUPAPP" == 'env' ]; then
   ONLY_SETENV=true
+fi
+
+if [ "${FORCE_RUBY_V}" ]; then
+  echo ""
+  echo "========================================="
+  echo "Forcing ruby version to ${FORCE_RUBY_V}"
+  echo "${FORCE_RUBY_V}" > $APPDIR/.ruby-version
+  git -c advice.detachedHead=false add $APPDIR/.ruby-version
+  git -c advice.detachedHead=false commit $APPDIR/.ruby-version -m "Force ruby version"
+else
+  echo ""
+  echo "========================================="
+  echo "Removing .ruby-version"
+  rm -f $APPDIR/.ruby-version
+  git -c advice.detachedHead=false add $APPDIR/.ruby-version
+  git -c advice.detachedHead=false commit $APPDIR/.ruby-version -m "Remove ruby version"
 fi
 
 echo ""
@@ -369,7 +423,6 @@ git -c advice.detachedHead=false commit $APPDIR/.platform -m "Add platform"
 git -c advice.detachedHead=false add $APPDIR/Procfile
 git -c advice.detachedHead=false commit $APPDIR/Procfile -m "Add Procfile"
 
-
 if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
 
   echo ""
@@ -382,7 +435,7 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
     echo "Ensure that the database has been created and seeded before continuing."
     echo "Run app-scripts/ app-scripts/seed-aws-db.sh from a current installation directory"
   fi
-  read -p "Hit enter to continue" _NOENTRY
+  [ -z "$BATCHMODE" ] && read -p "Hit enter to continue" _NOENTRY
 
   # Required because the cli can't cope with commas in eb create
   TEMP_DB_SEARCH_PATH=ml_app
@@ -404,9 +457,19 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
     -p "$EB_PLATFORM" \
     -k "$EB_KEYNAME" \
     --envvars \
-    SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_DEVISE_SECRET_KEY="$DEVISE_SECRET_KEY_BASE",RAILS_ENV=production,RAILS_SERVE_STATIC_FILES="$RAILS_SERVE_STATIC_FILES",RAILS_SKIP_ASSET_COMPILATION=true,FPHS_ENV_NAME="$FPHS_ENV_NAME",FPHS_POSTGRESQL_HOSTNAME="$DB_HOST",FPHS_POSTGRESQL_USERNAME="$DB_USERNAME",FPHS_POSTGRESQL_PASSWORD="$DB_PASSWORD",FPHS_POSTGRESQL_DATABASE="$DB_NAME",FPHS_POSTGRESQL_PORT="$DB_PORT",RDS_SCHEMA="$TEMP_DB_SEARCH_PATH",FPHS_POSTGRESQL_SCHEMA="$TEMP_DB_SEARCH_PATH",RAILS_SKIP_MIGRATIONS="$SKIP_MIGRATIONS",SMTP_SERVER="$SMTP_SERVER",SMTP_PORT=465,SMTP_USER_NAME="$SMTP_USER_NAME",SMTP_PASSWORD="$SMTP_PASSWORD",FPHS_FROM_EMAIL="$FROM_EMAIL",FILESTORE_CONTAINERS_DIRNAME=containers,FILESTORE_NFS_DIR=/mnt/fphsfs,FILESTORE_TEMP_UPLOADS_DIR=/tmp/uploads,FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR",FPHS_X_SENDFILE_HEADER="X-Accel-Redirect",BASE_URL="$BASE_URL",SMS_SENDER_ID="$SMS_SENDER_ID",FPHS_ENC_SECRET_KEY_BASE="$FPHS_ENC_SECRET_KEY_BASE",FPHS_LOAD_APP_TYPES=1,MIG_PATH="$MIG_PATH",NUM_WORKERS="${NUM_WORKERS}",RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
+    SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE",FPHS_RAILS_DEVISE_SECRET_KEY="$DEVISE_SECRET_KEY_BASE",RAILS_ENV=production,RAILS_SERVE_STATIC_FILES="$RAILS_SERVE_STATIC_FILES",RAILS_SKIP_ASSET_COMPILATION=true,FPHS_ENV_NAME="$FPHS_ENV_NAME",FPHS_POSTGRESQL_HOSTNAME="$DB_HOST",FPHS_POSTGRESQL_USERNAME="$DB_USERNAME",FPHS_POSTGRESQL_PASSWORD="$DB_PASSWORD",FPHS_POSTGRESQL_DATABASE="$DB_NAME",FPHS_POSTGRESQL_PORT="$DB_PORT",RDS_SCHEMA="$TEMP_DB_SEARCH_PATH",FPHS_POSTGRESQL_SCHEMA="$TEMP_DB_SEARCH_PATH",RAILS_SKIP_MIGRATIONS="$SKIP_MIGRATIONS",SMTP_SERVER="$SMTP_SERVER",SMTP_PORT=465,SMTP_USER_NAME="$SMTP_USER_NAME",SMTP_PASSWORD="$SMTP_PASSWORD",FPHS_FROM_EMAIL="$FROM_EMAIL",FILESTORE_CONTAINERS_DIRNAME=containers,FILESTORE_NFS_DIR=/mnt/fphsfs,FILESTORE_TEMP_UPLOADS_DIR=/tmp/uploads,FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR",FPHS_X_SENDFILE_HEADER="X-Accel-Redirect",BASE_URL="$BASE_URL",SMS_SENDER_ID="$SMS_SENDER_ID",FPHS_ENC_SALT="$FPHS_ENC_SALT",FPHS_ENC_SECRET_KEY_BASE="$FPHS_ENC_SECRET_KEY_BASE",FPHS_LOAD_APP_TYPES=1,MIG_PATH="$MIG_PATH",NUM_WORKERS="${NUM_WORKERS}",RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
 
   eb use $EBENV
+
+  PUB_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name ${APPDOMAINNAME} --query 'HostedZones[?Name==`'${APPDOMAINNAME}'.`].Id' --output text)
+
+  CNAME=$(aws elasticbeanstalk describe-environments --output text --query 'Environments[?EnvironmentName==`'$EBENV'`] | [?Status!=`Terminated`].CNAME')
+  RRSID=$(aws route53 change-resource-record-sets \
+    --hosted-zone-id ${PUB_ZONE_ID} \
+    --change-batch '{"Changes": [ { "Action": "UPSERT", "ResourceRecordSet": { "Name": "'${APPDOMAINNAME}'", "Type": "A", "AliasTarget":{"HostedZoneId": "'${TARGET_EB_ZONE_ID}'","DNSName": "'$CNAME'","EvaluateTargetHealth": false } } } ]}' \
+    --output text --query 'ChangeInfo.Id')
+
+  aws route53 wait resource-record-sets-changed --id $RRSID
 
   if [ "$ENVTYPE" == 'migrate' ]; then
     echo "========================================="
@@ -414,7 +477,6 @@ if [ "$SETUPAPP" == 'setup' ] || [ "$ENVTYPE" == 'migrate' ]; then
     eb terminate
     exit
   fi
-
 
   echo "========================================="
   echo "Ensure the Route 53 record set for the internal domain $APPDOMAINNAME has been set up and points to the instance via a CNAME."
@@ -468,12 +530,8 @@ if [ "${SKIP_MIGRATIONS}" != 'true' ]; then
   echo "========================================="
   echo DB host name: $DB_HOST
   echo DB name: $DB_NAME
-  echo Hit enter to confirm this is the correct DB
-  read
 
   eb status | grep "Environment details"
-  echo Hit enter to confirm the correct environment details
-  read
 fi
 
 if [ -z "$RDS_HOST" ]; then
@@ -482,6 +540,8 @@ if [ -z "$RDS_HOST" ]; then
   echo "========================================="
   echo Setting up environment variables
   eb use $EBENV
+
+  wait_for_ready
 
   eb setenv \
     SECRET_KEY_BASE="$SECRET_KEY_BASE" \
@@ -510,6 +570,7 @@ if [ -z "$RDS_HOST" ]; then
     FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR" \
     FPHS_X_SENDFILE_HEADER="X-Accel-Redirect" \
     BASE_URL="$BASE_URL" \
+    PAGE_TITLE="$PAGE_TITLE" \
     SMS_SENDER_ID="$SMS_SENDER_ID" \
     FPHS_LOAD_APP_TYPES="$FPHS_LOAD_APP_TYPES" \
     FPHS_2FA_AUTH_DISABLED="$FPHS_2FA_AUTH_DISABLED" \
@@ -524,7 +585,10 @@ if [ -z "$RDS_HOST" ]; then
     MIG_PATH="$MIG_PATH" \
     FPHS_ADMIN_EMAIL=${ADMIN_EMAIL} \
     NUM_WORKERS="${NUM_WORKERS}" \
-    RAILS_MAX_THREADS="${RAILS_MAX_THREADS}"
+    RAILS_MAX_THREADS="${RAILS_MAX_THREADS}" \
+    FPHS_DISABLE_VDEF="${FPHS_DISABLE_VDEF}" \
+    FPHS_ALLOW_DYN_MIGRATIONS="${FPHS_ALLOW_DYN_MIGRATIONS}" \
+    ALLOW_USERS_TO_REGISTER="${ALLOW_USERS_TO_REGISTER}"
 
 fi
 
@@ -533,17 +597,7 @@ if [ "$ONLY_SETENV" ]; then
   exit
 fi
 
-echo ""
-echo "========================================="
-echo "Waiting for ready status to start deployment"
-eb_status=$(eb status | grep 'Status: Ready' | wc -l)
-echo ${eb_status}
-while [ "${eb_status}" != '1' ]; do
-  echo "Sleeping for 10 seconds then trying again"
-  sleep 10
-  eb_status=$(eb status | grep 'Status: Ready' | wc -l)
-  echo ${eb_status}
-done
+wait_for_ready
 
 echo ""
 echo "========================================="
@@ -557,7 +611,6 @@ echo "Completed deployment"
 rm $APPDIR/.ebextensions/certificates.config
 
 git config --global advice.detachedHead true
-
 
 echo ""
 echo "========================================="
