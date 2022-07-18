@@ -252,6 +252,10 @@ fi
 check_version_and_exit
 echo "Target version ${TARGET_VERSION}"
 
+echo "Update CHANGELOG"
+CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
+sed -i -E "s/## Unreleased/${CL_TITLE}/" CHANGELOG.md
+
 git add version.txt CHANGELOG.md
 
 echo "Commit the new version"
@@ -327,10 +331,6 @@ fi
 # Commit the new assets and schema
 echo "Pull from: $(git config --get remote.origin.url)"
 git pull
-
-echo "Update CHANGELOG"
-CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
-sed -i -E "s/## Unreleased/${CL_TITLE}/" CHANGELOG.md
 
 echo "Add final changes, commit and tag"
 git add -A
