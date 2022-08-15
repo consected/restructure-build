@@ -325,6 +325,10 @@ web: bundle exec puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
 delayed_job: cd /var/app/current; RAILS_ENV=production bundle exec bin/delayed_job -n $NUM_WORKERS run
 EOF
 
+# Ensure the pids directory is present to allow delayed_job to start up
+mkdir -p $APPDIR/tmp/pids
+touch $APPDIR/tmp/pids/.keep
+
 if [ "$NO_CERTIFICATE" != 'true' ]; then
   echo ""
   echo "========================================="
