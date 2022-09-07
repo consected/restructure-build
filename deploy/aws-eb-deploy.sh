@@ -27,6 +27,16 @@ EBREGION=${EBREGION:=us-east-1}
 # alias target to be specified, enabling an A record to the EB environment to be created
 TARGET_EB_ZONE_ID='<TBD>'
 
+while [ -z "${AWS_EB_PROFILE}" ]; do
+  echo "Choose the deployment configuration to use"
+  ls ../aws-setup/envs
+  read DEPLOYPROFILE
+
+  source ../aws-setup/envs/${DEPLOYPROFILE}
+  AWS_EB_PROFILE=${AWS_PROFILE}
+  EBAPPNAME=${ACCOUNT_NAME}
+done
+
 AWS_EB_PROFILE=${AWS_EB_PROFILE:=restructureuser}
 EB_KEYNAME=${EB_KEYNAME:=restructure-aws-eb}
 EBAPPNAME=${EBAPPNAME:=restructure-demo}
@@ -363,7 +373,7 @@ fi
 
 if [ "$ENVTYPE" != 'migrate' ]; then
 
-  while [ "${SETUPAPP}" != 'setup' ] && [ "${SETUPAPP}" != 'env' ] && [ "${SETUPAPP}" != 'deploy' ] && [ "${SETUPAPP}" != 'upgrade' ]; do
+  while [ "${SETUPAPP}" != 'setup' ] && [ "${SETUPAPP}" != 'env' ] && [ "${SETUPAPP}" != 'deploy' ] && [ "${SETUPAPP}" != 'deployonly' ] && [ "${SETUPAPP}" != 'upgrade' ]; do
     echo ""
     echo "========================================="
     echo "Setup the environment ($EBENV), use an existing one?, or just reset environment variables"
@@ -371,6 +381,7 @@ if [ "$ENVTYPE" != 'migrate' ]; then
     echo "setup   to create the environment"
     echo "env     to reset environment variables then exit"
     echo "deploy  to deploy to the existing environment."
+    echo "deployonly  to deploy to the existing environment without sending environment variables."
     echo "upgrade to upgrade the platform version (rebuilds instances). It is best to deploy the lastest version before this."
     read SETUPAPP
   done
@@ -538,7 +549,7 @@ if [ "${SKIP_MIGRATIONS}" != 'true' ]; then
   eb status | grep "Environment details"
 fi
 
-if [ -z "$RDS_HOST" ]; then
+if [ -z "$RDS_HOST" ] && [ "${SETUPAPP}" != 'deployonly' ]; then
 
   echo ""
   echo "========================================="
@@ -551,9 +562,12 @@ if [ -z "$RDS_HOST" ]; then
     SECRET_KEY_BASE="$SECRET_KEY_BASE" \
     FPHS_RAILS_SECRET_KEY_BASE="$SECRET_KEY_BASE" \
     FPHS_RAILS_DEVISE_SECRET_KEY="$DEVISE_SECRET_KEY_BASE" \
+    FPHS_ENC_SECRET_KEY_BASE="$FPHS_ENC_SECRET_KEY_BASE" \
+    FPHS_ENC_SALT="$FPHS_ENC_SALT" \
     RAILS_ENV=production \
     RAILS_SERVE_STATIC_FILES="$RAILS_SERVE_STATIC_FILES" \
     RAILS_SKIP_ASSET_COMPILATION=true \
+    BUNDLER_DEPLOYMENT_MODE=true \
     FPHS_ENV_NAME="$FPHS_ENV_NAME" \
     FPHS_POSTGRESQL_HOSTNAME="$DB_HOST" \
     FPHS_POSTGRESQL_USERNAME="$DB_USERNAME" \
@@ -564,17 +578,16 @@ if [ -z "$RDS_HOST" ]; then
     FPHS_POSTGRESQL_SCHEMA="$DB_SEARCH_PATH" \
     RAILS_SKIP_MIGRATIONS="$SKIP_MIGRATIONS" \
     SMTP_SERVER="$SMTP_SERVER" \
-    SMTP_PORT=465 \
+    SMTP_PORT=${SMTP_PORT:=465} \
     SMTP_USER_NAME="$SMTP_USER_NAME" \
     SMTP_PASSWORD="$SMTP_PASSWORD" \
     FPHS_FROM_EMAIL="$FROM_EMAIL" \
     FILESTORE_CONTAINERS_DIRNAME=containers \
-    FILESTORE_NFS_DIR=/mnt/fphsfs \
-    FILESTORE_TEMP_UPLOADS_DIR=/tmp/uploads \
+    FILESTORE_NFS_DIR=${FILESTORE_NFS_DIR:="/mnt/fphsfs"} \
+    FILESTORE_TEMP_UPLOADS_DIR=${FILESTORE_TEMP_UPLOADS_DIR:="/tmp/uploads"} \
     FILESTORE_USE_PARENT_SUB_DIR="$FILESTORE_USE_PARENT_SUB_DIR" \
     FPHS_X_SENDFILE_HEADER="X-Accel-Redirect" \
     BASE_URL="$BASE_URL" \
-    PAGE_TITLE="$PAGE_TITLE" \
     SMS_SENDER_ID="$SMS_SENDER_ID" \
     FPHS_LOAD_APP_TYPES="$FPHS_LOAD_APP_TYPES" \
     FPHS_2FA_AUTH_DISABLED="$FPHS_2FA_AUTH_DISABLED" \
@@ -592,7 +605,17 @@ if [ -z "$RDS_HOST" ]; then
     RAILS_MAX_THREADS="${RAILS_MAX_THREADS}" \
     FPHS_DISABLE_VDEF="${FPHS_DISABLE_VDEF}" \
     FPHS_ALLOW_DYN_MIGRATIONS="${FPHS_ALLOW_DYN_MIGRATIONS}" \
-    ALLOW_USERS_TO_REGISTER="${ALLOW_USERS_TO_REGISTER}"
+    PAGE_TITLE="${PAGE_TITLE}" \
+    INVITATION_CODE="${INVITATION_CODE}" \
+    ALLOW_USERS_TO_REGISTER="${ALLOW_USERS_TO_REGISTER}" \
+    DEFAULT_USER_TEMPLATE_EMAIL="${DEFAULT_USER_TEMPLATE_EMAIL}" \
+    NOTIFY_ON_REGISTRATION="${NOTIFY_ON_REGISTRATION}" \
+    ALLOW_ADMINS_TO_MANAGE_ADMINS="${ALLOW_ADMINS_TO_MANAGE_ADMINS}" \
+    ALLOW_DROP_COLUMNS="${ALLOW_DROP_COLUMNS}" \
+    PW_MIN_ENTROPY="${PW_MIN_ENTROPY}" \
+    PW_REGEX="${PW_REGEX}" \
+    PW_REGEX_REQ="${PW_REGEX_REQ}" \
+    PW_MIN_LEN="${PW_MIN_LEN}"
 
 fi
 
