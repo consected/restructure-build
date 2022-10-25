@@ -131,6 +131,12 @@ if [ "${PROD_REPO_URL}" ]; then
   git merge origin/${BUILD_GIT_BRANCH} -m "Merge remote" &&
     git commit -a -m "Commit"
   git push -f
+
+  if [ $? != 0 ]; then
+    echo "Failed to push to remotes. Will not continue."
+    exit 45
+  fi
+
 fi
 
 cd ${BUILD_DIR}
