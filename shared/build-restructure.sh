@@ -101,7 +101,7 @@ git config --global core.compression 0
 # Checkout branch to build
 pwd
 git checkout ${BUILD_GIT_BRANCH} || git checkout -b ${BUILD_GIT_BRANCH} --track origin/${BUILD_GIT_BRANCH}
-
+git pull
 mkdir -p tmp
 chmod 774 tmp
 mkdir -p log
@@ -128,9 +128,6 @@ if [ "${PROD_REPO_URL}" ]; then
   git remote set-url --push --add origin ${PROD_REPO_URL}
   git remote set-url --delete origin ${REPO_URL}
   git pull
-  git checkout new-master
-  git pull
-  git checkout develop
   git merge origin/${BUILD_GIT_BRANCH} -m "Merge remote" &&
     git commit -a -m "Commit"
   git push -f
