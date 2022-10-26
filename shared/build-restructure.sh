@@ -128,6 +128,9 @@ if [ "${PROD_REPO_URL}" ]; then
   git remote set-url --push --add origin ${PROD_REPO_URL}
   git remote set-url --delete origin ${REPO_URL}
   git pull
+  git checkout new-master
+  git pull
+  git checkout develop
   git merge origin/${BUILD_GIT_BRANCH} -m "Merge remote" &&
     git commit -a -m "Commit"
   git push -f
