@@ -17,14 +17,6 @@ curl --silent --location https://rpm.nodesource.com/setup_12.x | bash -
 
 amazon-linux-extras
 
-# yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-latest-x86_64/postgresql10-libs-10.10-1PGDG.rhel7.x86_64.rpm
-# yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-latest-x86_64/postgresql10-10.10-1PGDG.rhel7.x86_64.rpm
-# yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-latest-x86_64/postgresql10-server-10.10-1PGDG.rhel7.x86_64.rpm
-# yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-latest-x86_64/postgresql10-devel-10.10-1PGDG.rhel7.x86_64.rpm
-# yum install -y https://download.postgresql.org/pub/repos/yum/10/redhat/rhel-latest-x86_64/postgresql10-contrib-10.10-1PGDG.rhel7.x86_64.rpm
-
-# yum -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-7-x86_64/pgdg-redhat-repo-latest.noarch.rpm
-
 yum install -y git yarn \
   llvm-toolset-7-clang \
   openssl-devel readline-devel zlib-devel \
