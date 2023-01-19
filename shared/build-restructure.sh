@@ -128,8 +128,8 @@ if [ "${PROD_REPO_URL}" ]; then
   git remote set-url --push --add origin ${PROD_REPO_URL}
   git remote set-url --delete origin ${REPO_URL}
   git pull
-  git merge origin/${BUILD_GIT_BRANCH} -m "Merge remote" &&
-    git commit -a -m "Commit"
+  git merge origin/${BUILD_GIT_BRANCH} -X ours -m "Merge remote" && git commit -a -m "Commit"
+
   git push -f
 
   if [ $? != 0 ]; then
@@ -269,8 +269,8 @@ git commit version.txt CHANGELOG.md -m "new version created $(cat version.txt)"
 
 echo "Cleanup assets"
 rm -rf public/assets
-bundle exec rake assets:clobber
-bundle exec rake assets:precompile --trace
+RAILS_GROUPS=assets bundle exec rake assets:clobber
+RAILS_GROUPS=assets bundle exec rake assets:precompile --trace
 
 if [ "$?" != 0 ] || [ ! -d public/assets ]; then
   echo "Failed to precompile assets"
@@ -325,7 +325,7 @@ if [ "${RUN_TESTS}" == 'true' ]; then
 
   app-scripts/create-test-db.sh
   FPHS_ADMIN_SETUP=yes RAILS_ENV=test bundle exec rake db:seed
-  IGNORE_MFA=true RAILS_ENV=test bundle exec rspec ${RSPEC_OPTIONS}
+  RAILS_ENV=test bundle exec rspec ${RSPEC_OPTIONS}
   if [ "$?" == 0 ]; then
     echo "rspec OK"
   else

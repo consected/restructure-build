@@ -3,6 +3,10 @@ GIT_EMAIL=youremail
 BUILD_GIT_BRANCH=new-master
 REPO_URL="https://github.com/somerep"
 DOCS_REPO_URL="https://github.com/somerep_for_docs"
+# For example, to build the consected/restructure repo
+# REPO_URL="https://github.com/consected/restructure"
+# DOCS_REPO_URL="https://github.com/consected/restructure-docs"
+
 # If you want to commit the build to a different repo, uncomment and add it here
 # PROD_REPO_URL="https://github.com/prodrepo"
 # To prevent pushing results back to the dev repo too, uncomment this

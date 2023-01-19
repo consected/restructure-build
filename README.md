@@ -62,7 +62,7 @@ Protect the plaintext file with:
 
 If you use `.netrc` for your git authentication anyway, then a symlink will suffice:
 
-    ln -s ~/.netrc ./.netrc
+    ln -s ~/.netrc ./shared/.netrc
 
 Ensure that `build-vars.sh` and `.netrc` are not committed to source control. Check the `.gitignore` file.
 
@@ -74,7 +74,7 @@ Build the container with:
 
 Run the build process according to the settings in `shared/build-vars.sh` with:
 
-    docker run --volume="$(pwd)/shared:/shared" --volume="$(pwd)/output:/output"  consected/restructure-build
+    ./build.sh
 
 On a successful build, the `output` directory will contain a sub-directory `restructure`
 containing built and deployable code. The file `shared/build_version.txt` will show the new version.
@@ -85,6 +85,6 @@ BSD 3-Clause License
 
 This code is property of Harvard University
 and made available as open source under the BSD-3 license
-(https://opensource.org/licenses/BSD-3-Clause).
+(<https://opensource.org/licenses/BSD-3-Clause>).
 
 Copyright 2020 Harvard University
