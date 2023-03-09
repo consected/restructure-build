@@ -17,7 +17,7 @@ fi
 
 if [ "$1" == 'clean' ]; then
   docker image rm consected/restructure-build --force
-  echo "sudo is required to clean up the output directories"
+  echo "sudo is required to clean up the output/restructure* directories"
   sudo rm -rf output/restructure*
   sleep 5
 fi
