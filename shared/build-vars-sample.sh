@@ -1,4 +1,4 @@
-RUBY_V=2.7.7
+RUBY_V=3.0.6
 GIT_EMAIL=youremail
 BUILD_GIT_BRANCH=new-master
 REPO_URL="https://github.com/somerep"
