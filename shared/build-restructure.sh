@@ -291,7 +291,7 @@ git add --force public/assets
 
 echo "Run static analysis tests"
 if [ "${SKIP_BRAKEMAN}" != 'true' ]; then
-  bundle exec brakeman -o security/brakeman-output-${TARGET_VERSION}.md
+  bundle exec brakeman -o security/brakeman-output.md
   if [ "$?" == 0 ]; then
     echo "Brakeman OK"
   else
