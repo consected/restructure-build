@@ -332,7 +332,7 @@ find $APPDIR/.platform -type f -exec chmod 774 {} \;
 
 cat > $APPDIR/Procfile << EOF
 web: bundle exec puma -C /opt/elasticbeanstalk/config/private/pumaconf.rb
-delayed_job: cd /var/app/current; RAILS_ENV=production bundle exec bin/delayed_job -n $NUM_WORKERS run
+delayed_job: cd /var/app/current; mkdir -p tmp/pids; chown webapp:webapp tmp/pids; RAILS_ENV=production bundle exec bin/delayed_job -n $NUM_WORKERS run
 EOF
 
 # Ensure the pids directory is present to allow delayed_job to start up

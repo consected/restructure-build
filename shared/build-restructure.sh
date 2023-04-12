@@ -331,6 +331,12 @@ sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
 drop database if exists ${TEST_DB_NAME};
 EOF
 
+RAILS_ENV=test bundle exec rails zeitwerk:check
+if [ $? != 0 ]; then
+  echo "Zeitwerk test failed"
+  exit 7
+fi
+
 if [ "${RUN_TESTS}" == 'true' ]; then
   echo "Run tests"
 
