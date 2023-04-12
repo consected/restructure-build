@@ -327,15 +327,15 @@ echo "commit;" >> /tmp/current_schema.sql
 mv /tmp/current_schema.sql db/dumps/
 bundle exec rake db:structure:dump
 
-sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
-drop database if exists ${TEST_DB_NAME};
-EOF
-
 RAILS_ENV=test bundle exec rails zeitwerk:check
 if [ $? != 0 ]; then
   echo "Zeitwerk test failed"
   exit 7
 fi
+
+sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
+drop database if exists ${TEST_DB_NAME};
+EOF
 
 if [ "${RUN_TESTS}" == 'true' ]; then
   echo "Run tests"
