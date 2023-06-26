@@ -327,20 +327,28 @@ echo "commit;" >> /tmp/current_schema.sql
 mv /tmp/current_schema.sql db/dumps/
 bundle exec rake db:structure:dump
 
+sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
+drop database if exists ${TEST_DB_NAME};
+EOF
+
+echo "Setting up Zeitwerk check"
+if [ "${RUN_TESTS}" == 'true' ]; then
+  app-scripts/drop-test-db.sh
+  app-scripts/create-test-db.sh
+else
+  app-scripts/drop-test-db.sh 1
+  app-scripts/create-test-db.sh 1
+fi
+
 RAILS_ENV=test bundle exec rails zeitwerk:check
 if [ $? != 0 ]; then
   echo "Zeitwerk test failed"
   exit 7
 fi
 
-sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
-drop database if exists ${TEST_DB_NAME};
-EOF
-
 if [ "${RUN_TESTS}" == 'true' ]; then
   echo "Run tests"
 
-  app-scripts/create-test-db.sh
   FPHS_ADMIN_SETUP=yes RAILS_ENV=test bundle exec rake db:seed
   RAILS_ENV=test bundle exec rspec ${RSPEC_OPTIONS}
   if [ "$?" == 0 ]; then
@@ -383,7 +391,7 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
     security/bundle-audit-output.md \
     db/dumps/current_schema.sql db/structure.sql; do
 
-    cp -f ${f} ${DEV_COPY}/${f}
+    cp -a -f ${f} ${DEV_COPY}/${f}
 
   done
 
