@@ -207,7 +207,7 @@ if [ "$?" != "0" ]; then
   exit 7
 fi
 
-git add vendor/cache
+git add --force vendor/cache
 git add Gemfile*
 git add .ruby-version
 
@@ -217,6 +217,8 @@ if [ ! -d node_modules ]; then
   echo "No node_modules after yarn install"
   exit 1
 fi
+
+git add --force node_modules
 
 # Setup add DB
 
