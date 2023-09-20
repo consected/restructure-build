@@ -10,6 +10,7 @@ export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
 source $HOME/.bash_profile
 BUILD_DIR=/output/restructure
 DOCS_BUILD_DIR=${BUILD_DIR}-docs
+APPS_BUILD_DIR=${BUILD_DIR}-apps
 DEV_COPY=${BUILD_DIR}-dev
 
 cp /shared/.netrc ${HOME}/.netrc
@@ -55,11 +56,13 @@ sudo -u postgres psql -c 'SELECT version();'
 # Get source
 rm -rf ${BUILD_DIR}
 rm -rf ${DOCS_BUILD_DIR}
+rm -rf ${APPS_BUILD_DIR}
 rm -rf ${DEV_COPY}
 echo "Cloning repo"
 cd $(dirname ${BUILD_DIR})
 git clone ${REPO_URL} ${BUILD_DIR}
 git clone ${DOCS_REPO_URL} ${DOCS_BUILD_DIR}
+git clone ${APPS_REPO_URL} ${APPS_BUILD_DIR}
 
 if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
   echo "Failed to get the build repo"
@@ -87,6 +90,11 @@ git stash save
 
 if [ ! -f ${DOCS_BUILD_DIR}/.git/HEAD ]; then
   echo "Failed to get the docs repo"
+  exit 8
+fi
+
+if [ ! -f ${APPS_BUILD_DIR}/.git/HEAD ]; then
+  echo "Failed to get the apps repo"
   exit 8
 fi
 
@@ -155,6 +163,28 @@ rm -rf docs/app_reference
 mkdir -p docs/app_reference
 rsync -av --delete ${DOCS_BUILD_DIR}/app_reference docs
 git add docs
+
+echo "Setting up org specific ${APPS_BUILD_DIR}/source"
+cd ${APPS_BUILD_DIR}/source
+# Remove symlinks that point back to directories in the -apps repo
+# then recreate them as real directories
+for f in $(find . -type d); do
+  if [ -L ${BUILD_DIR}/$f ]; then
+    rm -rf ${BUILD_DIR}/$f
+    mkdir -p ${BUILD_DIR}/$f
+  fi
+done
+
+# Remove symlinks that point back to files in the -apps repo
+# then copy them across as real files
+for f in $(find . -type f); do
+  rm -r ${BUILD_DIR}/$f
+  cp $f ${BUILD_DIR}/$f
+done
+
+cd ${BUILD_DIR}
+
+git add .
 
 echo "Add db"
 rm -f db/app_configs
@@ -268,6 +298,7 @@ echo "Target version ${TARGET_VERSION}"
 
 echo "Update CHANGELOG"
 CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
+echo "Changed ## Unreleased -> ${CL_TITLE}"
 sed -i -E "s/## Unreleased/${CL_TITLE}/" CHANGELOG.md
 
 git add version.txt CHANGELOG.md
@@ -335,11 +366,11 @@ EOF
 
 echo "Setting up Zeitwerk check"
 if [ "${RUN_TESTS}" == 'true' ]; then
-  app-scripts/drop-test-db.sh
-  app-scripts/create-test-db.sh
+  app-scripts/drop-test-db.sh > /dev/null
+  app-scripts/create-test-db.sh > /dev/null
 else
-  app-scripts/drop-test-db.sh 1
-  app-scripts/create-test-db.sh 1
+  app-scripts/drop-test-db.sh 1 > /dev/null
+  app-scripts/create-test-db.sh 1 > /dev/null
 fi
 
 RAILS_ENV=test bundle exec rails zeitwerk:check
@@ -375,6 +406,7 @@ echo "Push to: $(git config --get remote.origin.url)"
 git push
 git push origin ${TARGET_VERSION}
 git push origin --all
+git push origin --tags
 
 # git push -f origin "${TARGET_VERSION}"
 
@@ -433,8 +465,6 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
   git pull
   git add -A
   git commit -m "Built and tested release-ready version '${TARGET_VERSION}' - dev repo"
-  git tag -a "${TARGET_VERSION}" -m "Push release"
-
   echo "Dev repo config"
   git config --global http.postBuffer 500M
   git config --global http.maxRequestBuffer 100M
@@ -446,6 +476,7 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
     git commit -a -m "Commit"
   echo "Final push to dev"
   git push -f
+  git tag -a "${TARGET_VERSION}-dev" -m "Push release back to dev"
   git push origin --tags
   git push origin --all
 fi

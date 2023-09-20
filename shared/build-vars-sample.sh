@@ -1,11 +1,13 @@
 RUBY_V=3.0.6
 GIT_EMAIL=youremail
 BUILD_GIT_BRANCH=new-master
-REPO_URL="https://github.com/somerep"
-DOCS_REPO_URL="https://github.com/somerep_for_docs"
+REPO_URL="https://github.com/yourorg/restructure"
+DOCS_REPO_URL="https://github.com/yourorg/restructure-docs"
+APPS_REPO_URL="https://github.com/yourorg/restructure-apps"
 # For example, to build the consected/restructure repo
 # REPO_URL="https://github.com/consected/restructure"
 # DOCS_REPO_URL="https://github.com/consected/restructure-docs"
+# APPS_REPO_URL="https://github.com/consected/restructure-apps"
 
 # If you want to commit the build to a different repo, uncomment and add it here
 # PROD_REPO_URL="https://github.com/prodrepo"
