@@ -6,35 +6,31 @@
 source /shared/build-vars.sh
 export HOME=/root
 
-PGVER=12
+PGVER=15
 
 yum update -y
 yum install -y deltarpm sudo rsync adduser
 yum update -y
 
 curl --silent --location https://dl.yarnpkg.com/rpm/yarn.repo | tee /etc/yum.repos.d/yarn.repo
-# curl --silent --location https://rpm.nodesource.com/setup_16.x | bash -
 yum install https://rpm.nodesource.com/pub_16.x/nodistro/repo/nodesource-release-nodistro-1.noarch.rpm -y
 yum install nodejs -y --setopt=nodesource-nodejs.module_hotfixes=1
 
-amazon-linux-extras
-
 yum install -y git yarn \
-  llvm-toolset-7-clang \
   openssl-devel readline-devel zlib-devel \
   gcc gcc-c++ make which mlocate \
+  libffi libffi-devel libyaml libyaml-devel rsync sudo \
   tar bzip2 \
-  words unzip libyaml libyaml-devel
+  words unzip
 
 if [ $? != 0 ]; then
   echo 'Failed to install main packages'
   exit 7
 fi
 
-amazon-linux-extras enable postgresql${PGVER} vim epel
 yum clean metadata
 
-yum install -y postgresql postgresql-server postgresql-devel postgresql-contrib
+yum install -y postgresql${PGVER} postgresql${PGVER}-server libpq-devel postgresql${PGVER}-contrib
 
 if [ -z "$(which psql)" ]; then
   echo "Failed to install psql"

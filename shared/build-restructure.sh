@@ -41,7 +41,7 @@ export FPHS_POSTGRESQL_SCHEMA=${APP_DB_SEARCH_PATH}
 export FPHS_POSTGRESQL_PORT=5432
 export FPHS_POSTGRESQL_HOSTNAME=localhost
 export FPHS_RAILS_DEVISE_SECRET_KEY="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 128 | head -n 1)"
-export FPHS_RAILS_SECRET_KEY_BASE="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 128 | head -n 1)"
+export SECRET_KEY_BASE="$(cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 128 | head -n 1)"
 export RAILS_ENV=production
 
 # Check rsync is installed
@@ -230,7 +230,6 @@ bundle remove solargraph
 
 bundle install --system --no-deployment
 bundle package --all
-bundle cache --all
 
 if [ ! -d vendor/cache ]; then
   echo "No vendor/cache after bundle package"
@@ -244,6 +243,7 @@ if [ "$?" != "0" ]; then
 fi
 
 git add --force vendor/cache
+git add --force vendor/bundle
 git add Gemfile*
 git add .ruby-version
 
@@ -364,7 +364,7 @@ done
 pg_dump -O ${DUMP_SCHEMAS_ARGS} -d ${DB_NAME} -s -x >> /tmp/current_schema.sql
 echo "commit;" >> /tmp/current_schema.sql
 mv /tmp/current_schema.sql db/dumps/
-bundle exec rake db:structure:dump
+bundle exec rails db:schema:dump
 
 sudo -u postgres ${PGSQLBIN}/psql ${DB_NAME} << EOF
 drop database if exists ${TEST_DB_NAME};
