@@ -305,7 +305,7 @@ echo "Target version ${TARGET_VERSION}"
 echo "Update CHANGELOG"
 CL_TITLE="## [${TARGET_VERSION}] - $(date +%Y-%m-%d)"
 echo "Changed ## Unreleased -> ${CL_TITLE}"
-sed -i -E "s/## Unreleased/${CL_TITLE}/" CHANGELOG.md
+sed -i -E "s/## Unreleased/## Unreleased\n\n${CL_TITLE}/" CHANGELOG.md
 
 git add version.txt CHANGELOG.md
 
