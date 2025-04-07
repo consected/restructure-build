@@ -12,7 +12,10 @@ BUILD_DIR=/output/restructure
 DOCS_BUILD_DIR=${BUILD_DIR}-docs
 APPS_BUILD_DIR=${BUILD_DIR}-apps
 DEV_COPY=${BUILD_DIR}-dev
-
+if [ "$1" == 'minor' ]; then
+  VERSION_STEP=minor
+fi
+  
 cp /shared/.netrc ${HOME}/.netrc
 chmod 600 ${HOME}/.netrc
 
@@ -137,7 +140,7 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
 fi
 
 head -32 CHANGELOG.md | tail -13
-check_version_and_exit
+check_version_and_exit ${VERSION_STEP}
 
 echo "Setup remote repos"
 if [ "${PROD_REPO_URL}" ]; then
@@ -299,7 +302,7 @@ if [ -z "${TARGET_VERSION}" ]; then
   exit 1
 fi
 
-check_version_and_exit
+check_version_and_exit ${VERSION_STEP}
 echo "Target version ${TARGET_VERSION}"
 
 echo "Update CHANGELOG"
