@@ -24,13 +24,13 @@ echo > /shared/build_version.txt
 function check_version_and_exit() {
   IFS='.' read -a OLD_VER_ARRAY < version.txt
   if [ -z "${OLD_VER_ARRAY[0]}" ] || [ -z "${OLD_VER_ARRAY[1]}" ]; then
-    echo "Current version is incorrect format: $(cat version.txt)"
+    echo "Current version is incorrect format for 'minor' update: $(cat version.txt)"
     echo "This can often be resolved simply by re-running the build script."
     exit 1
   fi
 
   if [ "$1" != 'minor' ] && [ -z "${OLD_VER_ARRAY[2]}" ]; then
-    echo "Current version is incorrect format: $(cat version.txt)"
+    echo "Current version is incorrect format for 'patch' update: $(cat version.txt)"
     echo "This can often be resolved simply by re-running the build script."
     exit 1
   fi

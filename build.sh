@@ -29,5 +29,10 @@ fi
 if [ -z "$(docker images | grep consected/restructure-build)" ]; then
   echo Container not available
 else
-  docker run --volume="$(pwd)/shared:/shared" --volume="$(pwd)/output:/output" consected/restructure-build
+  if [ "$1" == 'minor' ] || [ "$2" == 'minor' ]; then
+    echo 'Minor version'
+    UPVLEVEL=minor
+  fi
+
+  docker run --volume="$(pwd)/shared:/shared" --volume="$(pwd)/output:/output" consected/restructure-build /shared/build-restructure.sh ${UPVLEVEL}
 fi
