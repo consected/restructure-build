@@ -1,4 +1,4 @@
-RUBY_V=3.0.6
+RUBY_V=3.4.2
 GIT_EMAIL=youremail
 BUILD_GIT_BRANCH=new-master
 REPO_URL="https://github.com/yourorg/restructure"
@@ -28,3 +28,5 @@ DB_DEFAULT_SCHEMA=ml_app
 APP_DB_SEARCH_PATH=ml_app,ref_data
 DUMP_SCHEMAS="ml_app ref_data"
 RSPEC_OPTIONS='--exclude-pattern "**/features/**/*_spec.rb"'
+# Skip bundle-audit analysis of gems
+# SKIP_BUNDLE_AUDIT=true

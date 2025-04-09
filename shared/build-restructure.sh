@@ -93,8 +93,6 @@ if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
   exit 7
 fi
 
-head -32 CHANGELOG.md | tail -13
-
 git stash save
 
 if [ ! -f ${DOCS_BUILD_DIR}/.git/HEAD ]; then
@@ -139,7 +137,7 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
   rsync -a --delete ${BUILD_DIR}/ ${DEV_COPY}/
 fi
 
-head -32 CHANGELOG.md | tail -13
+
 check_version_and_exit ${VERSION_STEP}
 
 echo "Setup remote repos"
@@ -149,11 +147,8 @@ if [ "${PROD_REPO_URL}" ]; then
   git remote set-url --delete origin ${REPO_URL}
   git fetch > /dev/null
 
-  head -32 CHANGELOG.md | tail -13
-
   git merge origin/${BUILD_GIT_BRANCH} -X ours -m "Merge remote" > /dev/null && git commit -a -m "Commit"
 
-  head -32 CHANGELOG.md | tail -13
   git push -f
 
   if [ $? != 0 ]; then
@@ -404,7 +399,6 @@ fi
 # Commit the new assets and schema
 echo "Pull from: $(git config --get remote.origin.url)"
 git pull
-head -32 CHANGELOG.md | tail -13
 
 echo "Add final changes, commit and tag"
 git add -A
