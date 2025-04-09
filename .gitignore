@@ -6,3 +6,5 @@ output/*
 output/.*
 !output/.keep
 *-secrets
+.vscode/settings.json
+build_version.txt
