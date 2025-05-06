@@ -69,9 +69,14 @@ rm -rf ${APPS_BUILD_DIR}
 rm -rf ${DEV_COPY}
 echo "Cloning repo"
 cd $(dirname ${BUILD_DIR})
-git clone ${REPO_URL} ${BUILD_DIR} > /dev/null
-git clone ${DOCS_REPO_URL} ${DOCS_BUILD_DIR} > /dev/null
+git clone ${REPO_URL} ${BUILD_DIR} > /dev/null && \
+git clone ${DOCS_REPO_URL} ${DOCS_BUILD_DIR} > /dev/null && \
 git clone ${APPS_REPO_URL} ${APPS_BUILD_DIR} > /dev/null
+
+if [ $? != 0 ]; then
+  echo "Failed to clone repos"
+  exit 1
+fi
 
 if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
   echo "Failed to get the build repo"
@@ -82,14 +87,16 @@ cd ${BUILD_DIR}
 rbenv local ${RUBY_V}
 rbenv global ${RUBY_V}
 
-if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
+SOURCE_RUBYV=$(cat ${BUILD_DIR}/.ruby-version)
+if [ "${SOURCE_RUBYV}" != "${RUBY_V}" ]; then
   rbenv install ${RUBY_V}
   rbenv local ${RUBY_V}
   rbenv global ${RUBY_V}
 fi
 
-if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
-  echo "Ruby versions don't match: $(cat ${BUILD_DIR}/.ruby-version) != ${RUBY_V}"
+SOURCE_RUBYV=$(cat ${BUILD_DIR}/.ruby-version)
+if [ "${SOURCE_RUBYV}" != "${RUBY_V}" ]; then
+  echo "Ruby versions don't match: ${SOURCE_RUBYV} != ${RUBY_V}"
   exit 7
 fi
 
