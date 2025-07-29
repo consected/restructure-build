@@ -22,6 +22,7 @@ chmod 600 ${HOME}/.netrc
 echo > /shared/build_version.txt
 
 function check_version_and_exit() {
+  OLD_VER=$(cat version.txt)
   IFS='.' read -a OLD_VER_ARRAY < version.txt
   if [ -z "${OLD_VER_ARRAY[0]}" ] || [ -z "${OLD_VER_ARRAY[1]}" ]; then
     echo "Current version is incorrect format for 'minor' update: $(cat version.txt)"
@@ -31,8 +32,12 @@ function check_version_and_exit() {
 
   if [ "$1" != 'minor' ] && [ -z "${OLD_VER_ARRAY[2]}" ]; then
     echo "Current version is incorrect format for 'patch' update: $(cat version.txt)"
-    echo "This can often be resolved simply by re-running the build script."
-    exit 1
+    if [ "$1" == 'failfast' ] || [ "$2" == 'failfast' ]; then
+      echo "This can often be resolved simply by re-running the build script."
+      exit 1
+    fi
+    echo "${OLD_VER}.0" > version.txt
+    check_version_and_exit $1 failfast
   fi
 }
 
@@ -69,14 +74,9 @@ rm -rf ${APPS_BUILD_DIR}
 rm -rf ${DEV_COPY}
 echo "Cloning repo"
 cd $(dirname ${BUILD_DIR})
-git clone ${REPO_URL} ${BUILD_DIR} > /dev/null && \
-git clone ${DOCS_REPO_URL} ${DOCS_BUILD_DIR} > /dev/null && \
+git clone ${REPO_URL} ${BUILD_DIR} > /dev/null
+git clone ${DOCS_REPO_URL} ${DOCS_BUILD_DIR} > /dev/null
 git clone ${APPS_REPO_URL} ${APPS_BUILD_DIR} > /dev/null
-
-if [ $? != 0 ]; then
-  echo "Failed to clone repos"
-  exit 1
-fi
 
 if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
   echo "Failed to get the build repo"
@@ -84,19 +84,21 @@ if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
 fi
 
 cd ${BUILD_DIR}
-rbenv local ${RUBY_V}
-rbenv global ${RUBY_V}
 
-SOURCE_RUBYV=$(cat ${BUILD_DIR}/.ruby-version)
-if [ "${SOURCE_RUBYV}" != "${RUBY_V}" ]; then
+if [ -z "${RUBY_V}" ]; then
+  RUBY_V="$(cat ${BUILD_DIR}/.ruby-version)"
+fi
+
+rbenv local ${RUBY_V} && rbenv global ${RUBY_V}
+
+if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
   rbenv install ${RUBY_V}
   rbenv local ${RUBY_V}
   rbenv global ${RUBY_V}
 fi
 
-SOURCE_RUBYV=$(cat ${BUILD_DIR}/.ruby-version)
-if [ "${SOURCE_RUBYV}" != "${RUBY_V}" ]; then
-  echo "Ruby versions don't match: ${SOURCE_RUBYV} != ${RUBY_V}"
+if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
+  echo "Ruby versions don't match: $(cat ${BUILD_DIR}/.ruby-version) != ${RUBY_V}"
   exit 7
 fi
 
@@ -296,7 +298,7 @@ CREATE EXTENSION if not exists pgcrypto;
 EOF
 
 echo "Upversion code"
-rm -f app-scripts/.ruby_version
+# rm -f app-scripts/.ruby-version
 TARGET_VERSION=$(ruby app-scripts/upversion.rb)
 
 if [ -z "${TARGET_VERSION}" ]; then
