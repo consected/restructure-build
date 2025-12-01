@@ -1,4 +1,5 @@
-RUBY_V=3.4.2
+# Specify a different ruby version here if the one in .ruby-version should be overridden
+# RUBY_V=3.4.2
 GIT_EMAIL=youremail
 BUILD_GIT_BRANCH=new-master
 REPO_URL="https://github.com/yourorg/restructure"

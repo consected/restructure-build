@@ -12,6 +12,7 @@ BUILD_DIR=/output/restructure
 DOCS_BUILD_DIR=${BUILD_DIR}-docs
 APPS_BUILD_DIR=${BUILD_DIR}-apps
 DEV_COPY=${BUILD_DIR}-dev
+REMOVE_GEMS="e2mmap solargraph"
 if [ "$1" == 'minor' ]; then
   VERSION_STEP=minor
 fi
@@ -84,17 +85,23 @@ if [ ! -f ${BUILD_DIR}/.git/HEAD ]; then
 fi
 
 cd ${BUILD_DIR}
-
 if [ -z "${RUBY_V}" ]; then
-  RUBY_V="$(cat ${BUILD_DIR}/.ruby-version)"
+  RUBY_V="$(cat ${BUILD_DIR}/.ruby-version)"  
+  echo "RUBY_V is not set. Using value in source ${BUILD_DIR}/.ruby-version = ${RUBY_V}"
 fi
-
 rbenv local ${RUBY_V} && rbenv global ${RUBY_V}
 
 if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
-  rbenv install ${RUBY_V}
-  rbenv local ${RUBY_V}
+  echo "Installing new ruby version ${RUBY_V}"
+  git -C /root/.rbenv/plugins/ruby-build pull && \
+  rbenv install --skip-existing ${RUBY_V} && \
+  rbenv local ${RUBY_V} && \
   rbenv global ${RUBY_V}
+
+  if [ $? != 0 ]; then
+    echo "Failed to install new ruby version ${RUBY_V}"
+    exit 18
+  fi
 fi
 
 if [ "$(cat ${BUILD_DIR}/.ruby-version)" != ${RUBY_V} ]; then
@@ -145,7 +152,6 @@ if [ "${ONLY_PUSH_TO_PROD_REPO}" != 'true' ]; then
   mkdir -p ${DEV_COPY}
   rsync -a --delete ${BUILD_DIR}/ ${DEV_COPY}/
 fi
-
 
 check_version_and_exit ${VERSION_STEP}
 
@@ -208,16 +214,25 @@ git add db
 
 echo "Handle rbenv"
 
-if [ "$(rbenv local)" != "${RUBY_V}" ] || [ -z "$(ruby --version | grep ${RUBY_V})" ]; then
+if which ruby; then
+  RUBY_EXE_V=$(ruby --version | grep ${RUBY_V})
+fi
+
+if [ "$(rbenv local)" != "${RUBY_V}" ] || [ -z "${RUBY_EXE_V}" ]; then
   echo "Installing new ruby version ${RUBY_V}"
-  git -C /root/.rbenv/plugins/ruby-build pull
-  rbenv install ${RUBY_V}
-  rbenv local ${RUBY_V}
+  git -C /root/.rbenv/plugins/ruby-build pull && \
+  rbenv install --skip-existing ${RUBY_V} && \
+  rbenv local ${RUBY_V} && \
   rbenv global ${RUBY_V}
+
+  if [ $? != 0 ]; then
+    echo "Failed to install new ruby version ${RUBY_V}"
+    exit 19
+  fi
 fi
 
 if [ "$(rbenv local)" != "${RUBY_V}" ]; then
-  echo "Failed to install or use ruby version ${RUBY_V}. rbenv is using $(rbenv local). The file .ruby-version is #(cat .ruby-version)"
+  echo "Failed to install or use ruby version ${RUBY_V}. rbenv is using $(rbenv local). The file .ruby-version is $(cat .ruby-version)"
   exit 70
 fi
 
@@ -232,8 +247,9 @@ rm -f .bundle/config
 gem install bundler
 git --version
 
-bundle remove e2mmap
-bundle remove solargraph
+for gem in ${REMOVE_GEMS}; do
+  bundle info $gem 2> /dev/null && bundle remove $gem
+done
 
 bundle install --system --no-deployment
 bundle package --all
@@ -298,7 +314,6 @@ CREATE EXTENSION if not exists pgcrypto;
 EOF
 
 echo "Upversion code"
-# rm -f app-scripts/.ruby-version
 TARGET_VERSION=$(ruby app-scripts/upversion.rb)
 
 if [ -z "${TARGET_VERSION}" ]; then
