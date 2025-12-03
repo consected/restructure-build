@@ -7,6 +7,11 @@ source /shared/default-ruby-version.sh
 source /shared/build-vars.sh
 export HOME=/root
 
+if [ -z "${RUBY_V}" ]; then
+  echo "RUBY_V is not set in default-ruby-version.sh - ensure the DOCKERFILE copies it correctly"
+  exit 5
+fi
+
 PGVER=15
 NODEJS_VERSION=23
 
@@ -53,15 +58,16 @@ sudo -u postgres psql -c 'SELECT version();' 2>&1
 
 # Install rbenv
 git clone https://github.com/rbenv/rbenv.git ${HOME}/.rbenv
-cd ${HOME}/.rbenv && src/configure && make -C src
+${HOME}/.rbenv/bin/rbenv init
 echo 'eval "$(rbenv init -)"' >> ${HOME}/.bash_profile
 export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
 eval "$(rbenv init -)"
 . /root/.bash_profile
-curl -fsSL https://github.com/rbenv/rbenv-installer/raw/master/bin/rbenv-doctor | bash
+#curl -fsSL https://github.com/rbenv/rbenv-installer/raw/master/bin/rbenv-doctor | bash
 mkdir -p "$(rbenv root)"/plugins
 git clone https://github.com/rbenv/ruby-build.git "$(rbenv root)"/plugins/ruby-build
 rbenv install --list
+rbenv install --skip-existing ${RUBY_V}
 rbenv rehash
 
 # Install ruby, etc
@@ -70,9 +76,11 @@ if [ "$(rbenv local)" != "${RUBY_V}" ]; then
   git -C /root/.rbenv/plugins/ruby-build pull && \
   rbenv install --skip-existing ${RUBY_V} && \
   rbenv global ${RUBY_V} && \
+  rbenv local ${RUBY_V} && \
   gem install bundler
-  if [ $? != 0 ]; then
+  if [ $? != 0 ] || [ "$(rbenv local)" != "${RUBY_V}" ]; then
     echo "Failed to install new ruby version ${RUBY_V} and bundler gem"
+    rbenv local
     exit 18
   fi
 fi
