@@ -1,0 +1,17 @@
+# Sample AWS CLI config profile block for the toolbox host's ~/.aws/config.
+# Copy the profiles you need into ~/.aws/config (or append via toolbox/lib/common.sh's
+# ensure_aws_profiles, see toolbox/bin/set_account_env.sh), replacing the role ARNs with your own.
+# credential_source=Ec2InstanceMetadata assumes the toolbox EC2 instance has an IAM instance
+# profile permitted to assume these roles.
+
+[profile myapp-dev]
+role_arn = arn:aws:iam::123456789012:role/dev-myapp-admin-role
+credential_source=Ec2InstanceMetadata
+region = us-east-1
+output = json
+
+[profile myapp-prod]
+role_arn = arn:aws:iam::210987654321:role/prod-myapp-admin-role
+credential_source=Ec2InstanceMetadata
+region = us-east-1
+output = json
