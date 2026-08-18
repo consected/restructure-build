@@ -122,7 +122,7 @@ if [ ! -f ${APPS_BUILD_DIR}/.git/HEAD ]; then
 fi
 
 cd ${BUILD_DIR}
-git config --global user.email ${GIT_EMAIL}
+git config --global user.email "${GIT_EMAIL}"
 git config --global user.name "Restructure Build Process"
 git config --global push.default matching
 git config --global http.postBuffer 500M
@@ -164,7 +164,7 @@ if [ "${PROD_REPO_URL}" ]; then
 
   git merge origin/${BUILD_GIT_BRANCH} -X ours -m "Merge remote" > /dev/null && git commit -a -m "Commit"
 
-  git push -f
+  git push --force-with-lease
 
   if [ $? != 0 ]; then
     echo "Failed to push to remotes. Will not continue."
