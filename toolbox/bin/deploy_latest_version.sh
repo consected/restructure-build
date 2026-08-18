@@ -3,7 +3,7 @@
 #
 # This still shells out to env-setup's deploy/aws-eb-deploy.sh (ENV_SETUP_DIR, default
 # /var/restructure/env-setup) - that script is deep AWS EB console workflow logic that has not
-# yet been ported into this repo (see toolbox/docs/onboarding.md for why). This wrapper only
+# yet been ported into this repo (see toolbox/README.md for why). This wrapper only
 # generalizes the naming/config that used to be hardcoded per-project.
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.." || exit 1

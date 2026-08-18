@@ -4,61 +4,61 @@ A Dockerfile and scripts to build [ReStructure](https://github.com/consected/res
 commit it to a repository. Deployable code is made available, and the latest version
 (in the source `version.txt`) will be upversioned.
 
-## Standalone server walkthrough: merge upstream and build a new version
+## ⚠️ This pushes real commits and tags
 
-This is the concrete, ordered set of steps for a fresh standalone server building a new version
-of `restructure` (merging in upstream changes first). Nothing else on this host is required.
+Running a build **clones, tags, commits and pushes** to whatever `REPO_URL`/`PROD_REPO_URL` you
+configure in `shared/build-vars.sh` - there is no dry-run mode. Point those at throwaway/test
+repos while you're getting familiar with this tool, not at a real production repo, unless you
+mean to cut an actual release.
 
-1. **Prerequisites**: `docker` and `git` installed. (`awscli` is only needed later for
-   `shared/run-rails-command.sh` - not for building.)
+## Quick start
 
-2. **Get this repo**:
+A fresh host only needs `docker` and `git` installed (`awscli` is only needed later, for
+`shared/run-rails-command.sh` - not for building).
+
+1. **Get this repo**:
 
        git clone https://github.com/consected/restructure-build
        cd restructure-build
 
-3. **Configure the build**:
+2. **Configure the build** - see [Configuration](#configuration) for the full variable reference:
 
        cp shared/build-vars-sample.sh shared/build-vars.sh
+       # edit shared/build-vars.sh - set at least REPO_URL, DOCS_REPO_URL, APPS_REPO_URL,
+       # GIT_EMAIL and the DB_* values
 
-   Edit `shared/build-vars.sh` and set at least `REPO_URL`, `DOCS_REPO_URL`, `APPS_REPO_URL`,
-   `GIT_EMAIL`, and the DB_* values (see the comments in the sample file). To have this run merge
-   upstream changes into `FROM_BRANCH` before building, also set:
+3. **Set up git credentials** the container will use to clone/push:
+
+       cp ~/.netrc shared/.netrc   # or create it - see "Configuration"
+       chmod 600 shared/.netrc
+
+4. **Build**:
+
+       toolbox/bin/build_latest_version.sh
+
+   The first run also builds the `consected/restructure-build` Docker image (slow - see
+   [The Docker image](#the-docker-image)). This is equivalent to running `./build.sh` directly;
+   `build_latest_version.sh` only adds config sanity checks and a `shared/probe-ruby-version.sh`
+   step first (updates `shared/default-ruby-version.sh` to match the target branch's
+   `.ruby-version` - optional, since a version is already checked into this repo).
+
+   To also merge upstream changes into `FROM_BRANCH` before building (rather than assuming that
+   already happened elsewhere), set in `shared/build-vars.sh`:
 
        SKIP_RELEASE_PREP=false
        FROM_BRANCH=develop
        UPSTREAM_REPO_URL="https://github.com/consected/restructure"
 
-4. **Set up git credentials** the container will use to clone/push:
+   See [Container-side release prep](#container-side-release-prep-optional) for details.
 
-       cp ~/.netrc shared/.netrc   # or create it - see "Configuration" below
-       chmod 600 shared/.netrc
-
-5. **Merge upstream changes and build**:
-
-       toolbox/bin/build_latest_version.sh
-
-   The first run builds the `consected/restructure-build` Docker image (slow), then runs the
-   build. With `SKIP_RELEASE_PREP=false` this performs the upstream sync, dependency update,
-   `CHANGELOG.md`/`version.txt` reconciliation, and merge of `FROM_BRANCH` into `BUILD_GIT_BRANCH`
-   itself (in a throwaway clone that is pushed straight to `origin` - there is no persistent local
-   checkout of `restructure` on this host), then runs the existing build/test/tag/push pipeline.
-
-   Equivalently, you can run `./build.sh` directly - `build_latest_version.sh` only adds the
-   Docker/`build-vars.sh` sanity checks and a `shared/probe-ruby-version.sh` step first, which
-   updates `shared/default-ruby-version.sh` to match the target branch's `.ruby-version` (a
-   version is already checked into this repo, so this step is optional, not a hard requirement).
-
-6. **Check the result**: `shared/build_version.txt` holds the new version number, and
+5. **Check the result**: `shared/build_version.txt` holds the new version number, and
    `output/restructure` holds the built, deployable code. The new tag has been pushed to
    `REPO_URL` (and `PROD_REPO_URL` if configured).
 
-If you hit strange merge conflicts or Docker build errors, see the troubleshooting notes under
-"Setup the Docker image" below.
+If you hit strange merge conflicts or Docker build errors, see
+[Troubleshooting](#troubleshooting) below.
 
-## The Process
-
-The build process performs the following
+## What a build does
 
 - gets the latest version from a specified remote branch in the _dev_ repo
 - bundles and packages gems for production deployment in `vendor/cache`
@@ -72,32 +72,58 @@ The build process performs the following
 - commits and pushes the built and tagged version back to the repo
   (and / or an alternative _production_ repo if specified)
 
-The Dockerfile does not `COPY` `shared/.netrc` or `shared/build-vars.sh` into the image - both are
-only ever read at `docker run` time from the `shared/` volume mount (see `build.sh`), so the built
-image itself contains no git credentials or repo/DB configuration and is safe to share/push to a
-registry. If you have an older image built before this changed, rebuild with
-`docker build --no-cache` rather than reusing it, and rotate any credentials it may have had baked in.
+## Configuration
 
-## Setup the Docker image
+Copy `shared/build-vars-sample.sh` to `shared/build-vars.sh` and edit it with your details -
+`REPO_URL`, `DOCS_REPO_URL`, `APPS_REPO_URL`, `GIT_EMAIL`, `BUILD_GIT_BRANCH` and the `DB_*`
+variables are the essentials; see the comments in the sample file for the rest (including the
+optional [release prep](#container-side-release-prep-optional) variables).
+
+- `PROD_REPO_URL` - commit the built version to a different _production_ repo, in addition to
+  the _dev_ repo (`REPO_URL`).
+- `ONLY_PUSH_TO_PROD_REPO=true` - don't push the built version back to the _dev_ repo at all.
+- `ONLY_PUSH_ASSETS_TO_PROD_REPO=true` - don't push built assets (Javascript, CSS, packaged gems)
+  to the _dev_ repo; they still go to the _production_ repo if one is configured.
+
+Set up `shared/.netrc` with login credentials for any private git repos (the source repo and
+optionally the production repo) so the container can clone/pull/push your code:
+
+    machine github.com login mygithubid password myplaintextpassword
+    machine hostname.of.prod.repo login prodrepouserid password anotherplaintextpassword
+
+Protect it with `chmod 600 shared/.netrc`, or symlink your own `.netrc` if you already use one
+for git auth: `ln -s ~/.netrc ./shared/.netrc`.
+
+`shared/build-vars.sh` and `shared/.netrc` are gitignored - do not commit them.
+
+## The Docker image
+
+Build (or rebuild) it with:
 
     docker image build .
 
 Or `./build.sh image` - cleans out any existing image and `output/restructure*`, then rebuilds
 just the image (Ruby/Postgres/Node/etc, via `build-container.sh`) with `--no-cache`, without
 running an actual ReStructure build. Useful for producing a fresh, dependencies-only image to
-push to a registry (e.g. GitHub Packages) - it doesn't need `shared/build-vars.sh` or
-`shared/.netrc` to exist, and (per "Configuration" below) the image itself never contains either.
-It also saves a gzipped tarball to `dist/restructure-build.tar.gz` (e.g. for uploading to S3 with
-`aws s3 cp dist/restructure-build.tar.gz s3://your-bucket/path/`).
+push to a registry (e.g. GitHub Packages) or upload to S3 - it doesn't need
+`shared/build-vars.sh` or `shared/.netrc` to exist. It also saves a gzipped tarball to
+`dist/restructure-build.tar.gz` (e.g. `aws s3 cp dist/restructure-build.tar.gz s3://your-bucket/path/`).
+
+The Dockerfile does not `COPY` `shared/.netrc` or `shared/build-vars.sh` into the image - both are
+only ever read at `docker run` time from the `shared/` volume mount (see `build.sh`), so the built
+image itself contains no git credentials or repo/DB configuration and is safe to share/push to a
+registry. If you have an older image built before this changed, rebuild with
+`docker build --no-cache` rather than reusing it, and rotate any credentials it may have had baked in.
+
+### Troubleshooting
 
 You may need to clear the output directory to get started. `output/restructure*` is owned by
 root (written by the container), so clean it up via a throwaway container rather than host sudo:
 
     docker run --rm --volume="$(pwd)/output:/output" consected/restructure-build sh -c 'rm -rf /output/restructure*'
 
-Or just run `./build.sh clean`, which does this automatically.
-
-If you receive strange merge conflicts during build, this can also often resolve them.
+Or just run `./build.sh clean`, which does this automatically - this (or clearing the output
+directory) can also often resolve strange merge conflicts during a build.
 
 If you get an error that yum can't find a repository due to no space, you may need to clean up docker. This will
 clean everything!
@@ -105,50 +131,7 @@ clean everything!
     docker system prune -a
     docker volume rm $(docker volume ls -f dangling=true -q)
 
-## Configuration
-
-Copy `build-vars-sample.sh` to `build-vars.sh` and edit it with your details.
-
-To commit the built version to a different _production_ repo, specify the `PROD_REPO_URL`
-environment variable with the URL to the repo.
-
-To prevent the built version being pushed to the _dev_ repo, specify `ONLY_PUSH_TO_PROD_REPO=true`
-
-To prevent built assets (Javascript, CSS, packaged gems) being pushed to the _dev_ repo,
-specify `ONLY_PUSH_ASSETS_TO_PROD_REPO=true`. They will continue to be pushed to the _production_
-repo if it is being used.
-
-Set up a file `shared/.netrc` to include login credentials to any private git repos (the original source
-and optionally the production repo) to allow the container to clone, pull and push your code. The file
-contents should look like:
-
-    machine github.com login mygithubid password myplaintextpassword
-    machine hostname.of.prod.repo login prodrepouserid password anotherplaintextpassword
-
-Protect the plaintext file with:
-
-    chmod 600 shared/.netrc
-
-If you use `.netrc` for your git authentication anyway, then a symlink will suffice:
-
-    ln -s ~/.netrc ./shared/.netrc
-
-Ensure that `build-vars.sh` and `.netrc` are not committed to source control. Check the `.gitignore` file.
-
-Build the container with:
-
-    ./build.sh
-
-## Run a build
-
-Run the build process according to the settings in `shared/build-vars.sh` with:
-
-    ./build.sh
-
-On a successful build, the `output` directory will contain a sub-directory `restructure`
-containing built and deployable code. The file `shared/build_version.txt` will show the new version.
-
-### Container-side release prep (optional)
+## Container-side release prep (optional)
 
 By default the container only builds `BUILD_GIT_BRANCH` as it finds it, assuming release prep
 (upstream fork sync, dependency updates, `CHANGELOG.md`/`version.txt` reconciliation, and merging
@@ -171,7 +154,7 @@ needs neither Ruby nor a `psql` client installed:
     docker run --rm -it \
       -v "${HOME}/.aws:/root/.aws:ro" \
       -e AWS_PROFILE -e AWS_ACCT -e AWS_REGION -e SECRETS_MGR_NAME \
-      -e RELEASES_REPO_URL -e APPVER -e DB_NAME -e DB_HOST -e DB_SEARCH_PATH \
+      -e RELEASES_REPO_URL -e APPVER -e DB_NAME -e DB_HOST -e DB_SEARCH_PATH -e FILESTORE_SUBDIR_BASE \
       -v "$(pwd)/shared:/shared" \
       consected/restructure-build /shared/run-rails-command.sh migrate
 
@@ -179,9 +162,13 @@ Supported commands: `migrate`, `add-admin <email>`, `add-filestore-app <id> [dev
 `console`. Secrets are always resolved from AWS Secrets Manager inside the container - nothing
 sensitive is passed as a command-line argument.
 
-See [toolbox/docs/onboarding.md](toolbox/docs/onboarding.md) for a project-agnostic set of
-host-side wrapper scripts (`toolbox/bin/`) that call this entrypoint, plus the rest of the
-build/deploy toolchain.
+## Toolbox CLI scripts
+
+`toolbox/bin/*.sh` are project-agnostic, host-side wrapper scripts covering the whole build/deploy
+toolchain (not just the build above) - `build_latest_version.sh`, `migrate_db.sh`,
+`add_or_reset_admin.sh`, `add_filestore_app.sh`, `db_client.sh` (wrapping the Rails commands
+above), plus deploy and toolbox-provisioning scripts. See
+[toolbox/README.md](toolbox/README.md) for the full script reference and setup steps.
 
 ## License
 

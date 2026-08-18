@@ -14,6 +14,23 @@ and Rails admin/migration commands run inside the `consected/restructure-build` 
 - `config/project-config.sample.sh` - all the project-specific variables these scripts need
 - `config/aws-profiles.sample` - sample AWS CLI profile block
 
+## Script reference (`toolbox/bin/`)
+
+| Script | Purpose |
+| --- | --- |
+| `setup_source.sh` | Bootstrap a toolbox host: git credentials, clone this repo + `env-setup` |
+| `set_account_env.sh` | Resolve `ENVTYPE` from the current AWS account, install AWS CLI profiles |
+| `build_latest_version.sh` | Build the latest version - see the main [README](../README.md) |
+| `migrate_db.sh` | Run `db:migrate` against the deployed release, in the container |
+| `add_or_reset_admin.sh` | Create/reset an admin user, in the container |
+| `add_filestore_app.sh` | Register a filestore app on EFS storage, in the container |
+| `db_client.sh` | Open an interactive `psql` session as the RDS master user, in the container |
+| `get_gpg_secret.sh` | Fetch the GPG passcode for deploy-time secrets from AWS Secrets Manager (used by the `deploy_*.sh`/`eb_action.sh` scripts below, not usually run directly) |
+| `deploy_latest_version.sh` | Deploy `new-master` to Elastic Beanstalk (see "What's deferred") |
+| `deploy_version.sh` | Deploy a specific tag to Elastic Beanstalk (see "What's deferred") |
+| `eb_action.sh` | Run an arbitrary EB setup action (`setup`/`deploy`/`set-dns`/...) (see "What's deferred") |
+| `update_scripts.sh` | Update the toolbox scripts on this host (see "Toolbox delivery" below) |
+
 ## New project onboarding
 
 1. Provision a toolbox host with `docker`, `git` and `awscli` installed.
