@@ -170,6 +170,20 @@ toolchain (not just the build above) - `build_latest_version.sh`, `migrate_db.sh
 above), plus deploy and toolbox-provisioning scripts. See
 [toolbox/README.md](toolbox/README.md) for the full script reference and setup steps.
 
+## Shared lib scripts
+
+`shared/lib/rbenv.sh` and `shared/lib/git-config.sh` are the canonical source for logic that is
+also needed by the [restructure-test](https://github.com/consected/restructure-test) container
+(rbenv/Ruby install, git identity config for pushing large repos). They are vendored (copied, not
+symlinked or submoduled) into that repo's `shared/lib/`, since the two repos build independent
+Docker images and don't share image layers. If you change either file here, run
+`./sync-ops-lib.sh` from a restructure-test checkout to refresh its vendored copies.
+
+`shared/lib/repo-setup.sh` is build-specific (ephemeral, always-fresh-clone pipeline with
+`BUILD_GIT_BRANCH`/`DEV_COPY`) and is intentionally *not* vendored - restructure-test's checkout
+lifecycle (persistent container, checkout-once-then-pull) and version.txt validation are
+different enough that sharing it would need behavior changes on the test side.
+
 ## License
 
 BSD 3-Clause License

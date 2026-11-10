@@ -10,3 +10,4 @@ dist/*
 *-secrets
 .vscode/settings.json
 shared/build_version.txt
+tmp/

@@ -13,7 +13,7 @@ if [ -z "${RUBY_V}" ]; then
 fi
 
 PGVER=15
-NODEJS_VERSION=23
+NODEJS_VERSION=26
 
 function install_packages() {
   yum update -y
