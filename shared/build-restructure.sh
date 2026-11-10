@@ -13,6 +13,8 @@ export HOME=/root
 export PATH="$HOME/.rbenv/bin:$HOME/.rbenv/shims:$PATH"
 source "$HOME/.bash_profile"
 source /shared/lib/rbenv.sh
+source /shared/lib/git-config.sh
+source /shared/lib/repo-setup.sh
 
 BUILD_DIR=/output/restructure
 DOCS_BUILD_DIR=${BUILD_DIR}-docs
@@ -37,33 +39,9 @@ MERGE_BACK=${MERGE_BACK:=false}
 #
 # --- Helpers ---
 #
-
-# Validate version.txt is in the expected "major.minor.patch" format for the given VERSION_STEP,
-# auto-appending a ".0" patch component once if a bare "major.minor" is found for a patch release.
-function check_version_and_exit() {
-  local step=$1
-  local failfast=$2
-  local old_ver
-  old_ver=$(cat version.txt)
-  local -a old_ver_array
-  IFS='.' read -r -a old_ver_array < version.txt
-
-  if [ -z "${old_ver_array[0]}" ] || [ -z "${old_ver_array[1]}" ]; then
-    echo "Current version is incorrect format for 'minor' update: ${old_ver}"
-    echo "This can often be resolved simply by re-running the build script."
-    exit 1
-  fi
-
-  if [ "${step}" != 'minor' ] && [ -z "${old_ver_array[2]}" ]; then
-    echo "Current version is incorrect format for 'patch' update: ${old_ver}"
-    if [ "${failfast}" == 'failfast' ]; then
-      echo "This can often be resolved simply by re-running the build script."
-      exit 1
-    fi
-    echo "${old_ver}.0" > version.txt
-    check_version_and_exit "${step}" failfast
-  fi
-}
+# check_version_and_exit, configure_git_for_build, clone_source_repos and checkout_build_branch
+# now live in /shared/lib/repo-setup.sh (sourced above) so they can be vendored into
+# restructure-test as well.
 
 # Sync FROM_BRANCH from an upstream fork before release prep. Run from within a checkout of REPO_URL.
 function sync_upstream() {
@@ -206,18 +184,6 @@ function run_release_prep() {
   cd - > /dev/null || exit 1
 }
 
-# Set standard git identity/buffer config for pushing large builds from the current directory.
-function configure_git_for_build() {
-  git config --global user.email "${GIT_EMAIL}"
-  git config --global user.name "Restructure Build Process"
-  git config --global push.default matching
-  git config --global http.postBuffer 500M
-  git config --global http.maxRequestBuffer 100M
-  git config --global https.postBuffer 500M
-  git config --global https.maxRequestBuffer 100M
-  git config --global core.compression 0
-}
-
 #
 # --- Build steps ---
 #
@@ -249,54 +215,6 @@ function start_postgres() {
   echo "Starting the database"
   sudo -u postgres "${PGSQLBIN}/pg_ctl" start -D /var/lib/pgsql/data -s -o "-p 5432" -w -t 300
   sudo -u postgres psql -c 'SELECT version();'
-}
-
-function clone_source_repos() {
-  rm -rf "${BUILD_DIR}" "${DOCS_BUILD_DIR}" "${APPS_BUILD_DIR}" "${DEV_COPY}"
-  echo "Cloning repo"
-  cd "$(dirname "${BUILD_DIR}")" || exit 1
-  git clone "${REPO_URL}" "${BUILD_DIR}" > /dev/null
-  git clone "${DOCS_REPO_URL}" "${DOCS_BUILD_DIR}" > /dev/null
-  git clone "${APPS_REPO_URL}" "${APPS_BUILD_DIR}" > /dev/null
-
-  if [ ! -f "${BUILD_DIR}/.git/HEAD" ]; then
-    echo "Failed to get the build repo"
-    exit 1
-  fi
-  if [ ! -f "${DOCS_BUILD_DIR}/.git/HEAD" ]; then
-    echo "Failed to get the docs repo"
-    exit 8
-  fi
-  if [ ! -f "${APPS_BUILD_DIR}/.git/HEAD" ]; then
-    echo "Failed to get the apps repo"
-    exit 8
-  fi
-}
-
-function checkout_build_branch() {
-  cd "${BUILD_DIR}" || exit 1
-
-  if [ -z "${RUBY_V}" ]; then
-    RUBY_V="$(cat "${BUILD_DIR}/.ruby-version")"
-    echo "RUBY_V is not set. Using value in source ${BUILD_DIR}/.ruby-version = ${RUBY_V}"
-  fi
-  ensure_ruby_version "${RUBY_V}"
-  git stash save
-
-  configure_git_for_build
-
-  echo "Checking out ${BUILD_GIT_BRANCH}"
-  git checkout "${BUILD_GIT_BRANCH}" || git checkout -b "${BUILD_GIT_BRANCH}" --track origin/"${BUILD_GIT_BRANCH}"
-  git pull
-  mkdir -p tmp && chmod 774 tmp
-  mkdir -p log && chmod 774 log
-  touch log/delayed_job.log
-  chmod 664 log/delayed_job.log
-
-  if [ ! -f Gemfile ]; then
-    echo "No Gemfile found after checking out branch ${BUILD_GIT_BRANCH} to $(pwd)"
-    exit 1
-  fi
 }
 
 function create_dev_copy() {
@@ -380,8 +298,10 @@ function install_gems_and_yarn() {
     bundle info "${gem_name}" 2> /dev/null && bundle remove "${gem_name}"
   done
 
-  bundle install --system --no-deployment
-  bundle package --all
+  bundle config set path.system true
+  bundle config set cache_all true
+  bundle install --no-deployment
+  bundle package
 
   if [ ! -d vendor/cache ]; then
     echo "No vendor/cache after bundle package"
@@ -487,7 +407,7 @@ function run_static_analysis() {
     if bundle exec brakeman -o security/brakeman-output.md; then
       echo "Brakeman OK"
     else
-      echo "Brakeman Failed"
+      echo "Brakeman Failed - see: security/brakeman-output.md" >&2
       exit 1
     fi
   fi
@@ -498,9 +418,9 @@ function run_static_analysis() {
     if bundle exec bundle-audit check > security/bundle-audit-output.md 2>&1; then
       echo "bundle-audit OK"
     else
-      echo "bundle-audit Failed: $?"
+      echo "bundle-audit Failed ($?) - see: security/bundle-audit-output.md" >&2
       cat security/bundle-audit-output.md
-      # Known/accepted vulnerabilities don't currently fail the build - see security/bundle-audit-output.md
+      exit 2
     fi
   fi
 }
